@@ -1,0 +1,254 @@
+{
+  "deploymentConfigs": {
+    "remoteProjectMode": {
+      "name": "远程项目目录模式部署",
+      "description": "直接在远程主机的项目目录执行部署命令，保留代码历史",
+      "config": {
+        "deploymentId": "prod-deploy-001",
+        "hostId": "production-server",
+        "repositoryUrl": "https://github.com/company/webapp.git",
+        "branch": "main",
+        "buildScript": "npm ci && npm run build && npm run test",
+        "deployScript": "npm ci --only=production && pm2 restart webapp && sleep 5 && curl -f http://localhost:3000/health",
+        "useRemoteProject": true,
+        "remoteProjectPath": "/var/www/webapp",
+        "workingDirectory": "/tmp/deployments",
+        "environment": {
+          "NODE_ENV": "production",
+          "PORT": "3000",
+          "DATABASE_URL": "postgresql://webapp:password@localhost:5432/webapp_prod"
+        },
+        "timeout": 600000,
+        "gitCredentials": {
+          "type": "token",
+          "token": "${GITHUB_TOKEN}"
+        }
+      }
+    },
+    
+    "traditionalMode": {
+      "name": "传统传输模式部署",
+      "description": "将构建产物传输到远程主机后执行部署",
+      "config": {
+        "deploymentId": "legacy-deploy-001",
+        "hostId": "legacy-server",
+        "repositoryUrl": "https://github.com/company/legacy-app.git",
+        "branch": "main",
+        "buildScript": "npm ci && npm run build",
+        "deployScript": "npm ci --only=production && systemctl restart legacy-app",
+        "useRemoteProject": false,
+        "workingDirectory": "/tmp/deployments",
+        "environment": {
+          "NODE_ENV": "production",
+          "APP_PORT": "8080"
+        },
+        "timeout": 300000
+      }
+    },
+
+    "dockerMode": {
+      "name": "Docker容器部署",
+      "description": "在远程主机构建和部署Docker容器",
+      "config": {
+        "deploymentId": "docker-deploy-001",
+        "hostId": "docker-server",
+        "repositoryUrl": "https://github.com/company/docker-app.git",
+        "branch": "main",
+        "buildScript": "docker build -t myapp:${BUILD_NUMBER} .",
+        "deployScript": "docker stop myapp || true && docker rm myapp || true && docker run -d --name myapp --restart unless-stopped -p 3000:3000 myapp:${BUILD_NUMBER}",
+        "useRemoteProject": true,
+        "remoteProjectPath": "/opt/docker-app",
+        "environment": {
+          "BUILD_NUMBER": "${DEPLOYMENT_ID}",
+          "DOCKER_REGISTRY": "registry.company.com"
+        },
+        "timeout": 900000
+      }
+    },
+
+    "stagingEnvironment": {
+      "name": "测试环境部署",
+      "description": "测试环境的快速部署配置",
+      "config": {
+        "deploymentId": "staging-deploy-001",
+        "hostId": "staging-server",
+        "repositoryUrl": "https://github.com/company/webapp.git",
+        "branch": "develop",
+        "buildScript": "npm ci && npm run build:staging",
+        "deployScript": "npm ci && pm2 restart webapp-staging",
+        "useRemoteProject": true,
+        "remoteProjectPath": "/var/www/webapp-staging",
+        "environment": {
+          "NODE_ENV": "staging",
+          "PORT": "3001",
+          "DATABASE_URL": "postgresql://webapp:password@localhost:5432/webapp_staging"
+        },
+        "timeout": 300000
+      }
+    },
+
+    "multiEnvironment": {
+      "name": "多环境部署配置",
+      "description": "支持多个环境的部署配置示例",
+      "environments": {
+        "development": {
+          "hostId": "dev-server",
+          "branch": "develop",
+          "remoteProjectPath": "/var/www/webapp-dev",
+          "environment": {
+            "NODE_ENV": "development",
+            "PORT": "3002",
+            "DEBUG": "true"
+          }
+        },
+        "staging": {
+          "hostId": "staging-server", 
+          "branch": "staging",
+          "remoteProjectPath": "/var/www/webapp-staging",
+          "environment": {
+            "NODE_ENV": "staging",
+            "PORT": "3001"
+          }
+        },
+        "production": {
+          "hostId": "prod-server",
+          "branch": "main",
+          "remoteProjectPath": "/var/www/webapp",
+          "environment": {
+            "NODE_ENV": "production",
+            "PORT": "3000"
+          }
+        }
+      }
+    }
+  },
+
+  "hostConfigurations": {
+    "production-server": {
+      "name": "生产服务器",
+      "hostname": "prod.company.com",
+      "ip": "192.168.1.100",
+      "port": 22,
+      "username": "deploy",
+      "authType": "key",
+      "keyPath": "/home/deploy/.ssh/id_rsa",
+      "os": "ubuntu"
+    },
+    
+    "staging-server": {
+      "name": "测试服务器",
+      "hostname": "staging.company.com", 
+      "ip": "192.168.1.101",
+      "port": 22,
+      "username": "deploy",
+      "authType": "password",
+      "password": "${STAGING_PASSWORD}",
+      "os": "ubuntu"
+    },
+
+    "docker-server": {
+      "name": "Docker服务器",
+      "hostname": "docker.company.com",
+      "ip": "192.168.1.102", 
+      "port": 22,
+      "username": "docker-deploy",
+      "authType": "key",
+      "keyPath": "/home/deploy/.ssh/docker_rsa",
+      "os": "centos"
+    }
+  },
+
+  "deploymentScripts": {
+    "nodejs": {
+      "name": "Node.js应用部署脚本",
+      "buildScript": "npm ci && npm run build && npm run test",
+      "deployScript": "npm ci --only=production && pm2 restart ${APP_NAME} && sleep 5 && curl -f http://localhost:${PORT}/health"
+    },
+
+    "react": {
+      "name": "React应用部署脚本", 
+      "buildScript": "npm ci && npm run build",
+      "deployScript": "cp -r build/* /var/www/html/ && systemctl reload nginx"
+    },
+
+    "docker": {
+      "name": "Docker应用部署脚本",
+      "buildScript": "docker build -t ${APP_NAME}:${BUILD_NUMBER} .",
+      "deployScript": "docker stop ${APP_NAME} || true && docker rm ${APP_NAME} || true && docker run -d --name ${APP_NAME} --restart unless-stopped -p ${PORT}:${PORT} ${APP_NAME}:${BUILD_NUMBER}"
+    },
+
+    "python": {
+      "name": "Python应用部署脚本",
+      "buildScript": "pip install -r requirements.txt && python -m pytest",
+      "deployScript": "pip install -r requirements.txt && systemctl restart ${APP_NAME} && sleep 5 && curl -f http://localhost:${PORT}/health"
+    }
+  },
+
+  "bestPractices": {
+    "remoteProjectMode": {
+      "advantages": [
+        "保留代码历史和Git信息",
+        "支持增量更新，部署更快",
+        "配置文件持久化",
+        "支持分支切换",
+        "符合常规部署习惯"
+      ],
+      "requirements": [
+        "远程主机需要Git环境",
+        "部署用户需要项目目录权限",
+        "需要配置正确的Git认证"
+      ],
+      "recommendations": [
+        "使用SSH密钥认证",
+        "设置合适的目录权限",
+        "配置环境变量文件",
+        "添加健康检查"
+      ]
+    },
+
+    "security": {
+      "sshKeys": "使用SSH密钥而不是密码认证",
+      "permissions": "限制部署用户权限，只授予必要的操作权限",
+      "secrets": "使用环境变量管理敏感信息",
+      "firewall": "配置防火墙规则限制SSH访问"
+    },
+
+    "monitoring": {
+      "logging": "记录详细的部署日志",
+      "healthCheck": "部署后执行健康检查",
+      "rollback": "准备回滚策略",
+      "alerts": "配置部署失败告警"
+    }
+  },
+
+  "troubleshooting": {
+    "commonIssues": {
+      "sshConnection": {
+        "problem": "SSH连接失败",
+        "solutions": [
+          "检查主机地址和端口",
+          "验证SSH密钥配置",
+          "确认防火墙设置",
+          "测试网络连接"
+        ]
+      },
+      "gitPermissions": {
+        "problem": "Git操作权限不足",
+        "solutions": [
+          "检查目录权限",
+          "验证Git认证信息",
+          "确认用户组设置"
+        ]
+      },
+      "deploymentFailure": {
+        "problem": "部署脚本执行失败",
+        "solutions": [
+          "检查脚本语法",
+          "验证环境变量",
+          "确认依赖安装",
+          "查看详细日志"
+        ]
+      }
+    }
+  }
+}

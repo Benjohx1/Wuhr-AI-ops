@@ -1,0 +1,997 @@
+// This is your Prisma schema file
+// Complete database schema for Wuhr AI Ops platform
+
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../lib/generated/prisma"
+  previewFeatures = ["jsonProtocol"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ========================================
+// 枚举类型定义
+// ========================================
+
+enum UserRole {
+  admin
+  manager
+  developer
+  viewer
+}
+
+enum UserApprovalStatus {
+  pending   // 待审批
+  approved  // 已批准
+  rejected  // 已拒绝
+}
+
+enum UserRegistrationStatus {
+  PENDING   // 待审批
+  APPROVED  // 已批准
+  REJECTED  // 已拒绝
+}
+
+
+
+enum LogLevel {
+  debug
+  info
+  warn
+  error
+  fatal
+}
+
+// ========================================
+// 认证核心表
+// ========================================
+
+model User {
+  id           String      @id @default(cuid())
+  username     String      @unique @db.VarChar(50)
+  email        String      @unique @db.VarChar(255)
+  password     String      @db.VarChar(255)
+  realName     String?     @db.VarChar(100)
+  role         UserRole    @default(viewer)
+  permissions  String[]
+  isActive     Boolean     @default(false) // 默认为false，需要管理员激活
+  approvalStatus UserApprovalStatus @default(pending) // 审批状态
+  approvedBy   String?     // 审批人ID
+  approvedAt   DateTime?   // 审批时间
+  rejectedReason String?   @db.Text // 拒绝原因
+  lastLoginAt  DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  sessions      AuthSession[]
+  authLogs      AuthLog[]
+  apiKeys       ApiKey[]
+  notifications Notification[]
+
+  servers       Server[]
+  approver      User?       @relation("UserApproval", fields: [approvedBy], references: [id])
+  approvedUsers User[]      @relation("UserApproval")
+
+  // CI/CD 相关关系
+  cicdProjects      CICDProject[]
+  jenkinsConfigs    JenkinsConfig[]
+  jenkinsJobConfigs JenkinsJobConfig[]
+  jenkinsJobGroups  JenkinsJobGroup[]
+  pipelines         Pipeline[]
+  builds            Build[]
+  deployments       Deployment[]
+  deploymentApprovals DeploymentApproval[]
+  approvalWorkflows ApprovalWorkflow[]
+
+  // ELK 相关关系
+  kibanaDashboards  KibanaDashboard[]
+  elkViewerConfig   ELKViewerConfig?
+
+  // Git 认证相关关系
+  gitCredentials    GitCredential[]
+
+  // 审批记录关系
+  approvalRecords   ApprovalRecord[]
+
+  // 模型配置相关关系
+  modelConfigs      ModelConfig[]
+  userModelSelection UserModelSelection?
+
+  // Jenkins Job审批相关关系
+  jenkinsJobExecutions JenkinsJobExecution[] @relation("JenkinsJobExecutionRequester")
+  jenkinsJobApprovals  JenkinsJobApproval[]  @relation("JenkinsJobApprovalApprover")
+  jenkinsConfigApprovers JenkinsConfigApprover[] @relation("JenkinsConfigApprover")
+  jenkinsJobNotifiers  JenkinsJobNotifier[]  @relation("JenkinsJobNotifier")
+  infoNotifications    InfoNotification[]    @relation("InfoNotificationUser")
+
+  @@map("users")
+  @@index([email])
+  @@index([username])
+  @@index([role])
+  @@index([isActive])
+  @@index([approvalStatus])
+}
+
+// 用户注册申请表
+model UserRegistration {
+  id           String                    @id @default(cuid())
+  username     String                    @unique @db.VarChar(50)
+  email        String                    @unique @db.VarChar(255)
+  password     String                    @db.VarChar(255)
+  realName     String                    @db.VarChar(100)
+  reason       String                    @db.Text
+  status       UserRegistrationStatus   @default(PENDING)
+  submittedAt  DateTime                 @default(now())
+  reviewedAt   DateTime?
+  reviewedBy   String?
+  reviewNote   String?                  @db.Text
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+
+  @@map("user_registrations")
+  @@index([status])
+  @@index([submittedAt])
+}
+
+model Role {
+  name         UserRole @id
+  displayName  String   @db.VarChar(100)
+  description  String   @db.Text
+  permissions  Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("roles")
+}
+
+model AuthSession {
+  id               String   @id @default(cuid())
+  userId           String
+  refreshTokenId   String   @unique @db.VarChar(255)
+  userAgent        String?  @db.Text
+  ipAddress        String?  @db.VarChar(45)
+  isActive         Boolean  @default(true)
+  expiresAt        DateTime
+  lastUsedAt       DateTime @default(now())
+  createdAt        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("auth_sessions")
+  @@index([userId])
+  @@index([refreshTokenId])
+  @@index([expiresAt])
+  @@index([isActive])
+}
+
+model AuthLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  username  String?  @db.VarChar(50)
+  email     String?  @db.VarChar(255)
+  action    String   @db.VarChar(50)
+  success   Boolean
+  ipAddress String?  @db.VarChar(45)
+  userAgent String?  @db.Text
+  details   String?  @db.Text
+  timestamp DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("auth_logs")
+  @@index([userId])
+  @@index([action])
+  @@index([success])
+  @@index([timestamp])
+}
+
+
+
+
+
+model SystemLog {
+  id        String   @id @default(cuid())
+  level     LogLevel @default(info)
+  category  String   @db.VarChar(100)
+  message   String   @db.Text
+  details   Json?
+  source    String?  @db.VarChar(255)
+  userId    String?
+  metadata  Json?
+  timestamp DateTime @default(now())
+
+  @@map("system_logs")
+  @@index([level])
+  @@index([category])
+  @@index([timestamp])
+  @@index([userId])
+}
+
+model SystemConfig {
+  key       String   @id @db.VarChar(255)
+  value     Json
+  category  String   @db.VarChar(100)
+  description String? @db.Text
+  isPublic  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_configs")
+  @@index([category])
+  @@index([isPublic])
+}
+
+model ApiKey {
+  id          String   @id @default(cuid())
+  name        String   @db.VarChar(255)
+  provider    String   @db.VarChar(50)
+  apiKey      String   @db.VarChar(500)
+  baseUrl     String?  @db.VarChar(500)
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  config      Json?
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("api_keys")
+  @@index([userId])
+  @@index([provider])
+  @@index([isActive])
+  @@index([isDefault])
+}
+
+// 通知表
+model Notification {
+  id          String            @id @default(cuid())
+  type        NotificationType
+  title       String            @db.VarChar(255)
+  message     String            @db.Text
+  data        Json?             // 额外数据
+  isRead      Boolean           @default(false)
+  userId      String            // 接收通知的用户ID
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+  @@index([userId])
+  @@index([type])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+
+
+// 服务器/主机管理模型
+model Server {
+  id              String      @id @default(cuid())
+  name            String      @db.VarChar(255)
+  hostname        String      @db.VarChar(255)
+  ip              String      @db.VarChar(45) // 支持IPv6
+  port            Int         @default(22)
+  status          ServerStatus @default(offline)
+  os              String      @db.VarChar(100)
+  version         String?     @db.VarChar(50)
+  location        String?     @db.VarChar(100)
+  tags            String[]    // 标签数组
+  description     String?     @db.Text
+  username        String      @db.VarChar(100) // SSH用户名
+  password        String?     @db.VarChar(255) // SSH密码（加密存储）
+  keyPath         String?     @db.VarChar(500) // SSH密钥路径
+  authType        String      @default("password") @db.VarChar(50) // 认证类型: password, key, local
+  isActive        Boolean     @default(true) // 是否启用
+  datacenter      String?     @db.VarChar(100) // 数据中心位置
+  lastConnectedAt DateTime?   // 最后连接时间
+  userId          String      // 创建者
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metrics     ServerMetric[]
+  alerts      ServerAlert[]
+  logs        ServerLog[]
+  cicdProjects CICDProject[]
+
+  @@map("servers")
+  @@index([userId])
+  @@index([status])
+  @@index([ip])
+  @@index([hostname])
+}
+
+// 服务器状态枚举
+enum ServerStatus {
+  online
+  offline
+  warning
+  error
+}
+
+// 服务器指标
+model ServerMetric {
+  id          String   @id @default(cuid())
+  serverId    String
+  timestamp   DateTime @default(now())
+  cpuUsage    Float?   // CPU使用率 (0-100)
+  cpuCores    Int?     // CPU核心数
+  memoryTotal Float?   // 总内存 (GB)
+  memoryUsed  Float?   // 已用内存 (GB)
+  diskTotal   Float?   // 总磁盘 (GB)
+  diskUsed    Float?   // 已用磁盘 (GB)
+  networkIn   Float?   // 入网流量 (MB/s)
+  networkOut  Float?   // 出网流量 (MB/s)
+  uptime      Int?     // 运行时间 (秒)
+
+  server      Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@map("server_metrics")
+  @@index([serverId])
+  @@index([timestamp])
+}
+
+// 服务器告警
+model ServerAlert {
+  id           String      @id @default(cuid())
+  serverId     String
+  type         AlertType   @default(custom)
+  level        AlertLevel  @default(info)
+  title        String      @db.VarChar(255)
+  message      String      @db.Text
+  threshold    Float?      // 阈值
+  currentValue Float?      // 当前值
+  isResolved   Boolean     @default(false)
+  resolvedAt   DateTime?
+  createdAt    DateTime    @default(now())
+
+  server       Server      @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@map("server_alerts")
+  @@index([serverId])
+  @@index([level])
+  @@index([isResolved])
+  @@index([createdAt])
+}
+
+// 告警类型枚举
+enum AlertType {
+  cpu
+  memory
+  disk
+  network
+  service
+  custom
+}
+
+// 告警级别枚举
+enum AlertLevel {
+  info
+  warning
+  error
+  critical
+}
+
+// 服务器日志
+model ServerLog {
+  id        String   @id @default(cuid())
+  serverId  String
+  level     LogLevel @default(info)
+  source    String   @db.VarChar(100) // 日志来源
+  message   String   @db.Text
+  metadata  Json?    // 额外的元数据
+  timestamp DateTime @default(now())
+
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@map("server_logs")
+  @@index([serverId])
+  @@index([level])
+  @@index([source])
+  @@index([timestamp])
+}
+
+enum NotificationType {
+  user_registration  // 用户注册通知
+  user_approved      // 用户审批通过通知
+  user_rejected      // 用户审批拒绝通知
+  system_alert       // 系统警告
+  api_key_expired    // API密钥过期
+}
+
+// ========================================
+// ELK 日志系统相关模型
+// ========================================
+
+// Kibana仪表板配置
+model KibanaDashboard {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  config      Json     // 仪表板配置JSON
+  isTemplate  Boolean  @default(false) // 是否为模板
+  isDefault   Boolean  @default(false) // 是否为默认仪表板
+  category    String?  @db.VarChar(100) // 分类
+  tags        String[] // 标签
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("kibana_dashboards")
+  @@index([userId])
+  @@index([isTemplate])
+  @@index([category])
+}
+
+// ELK日志查看器配置
+model ELKViewerConfig {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  layout      Json     // 布局配置
+  filters     Json?    // 默认过滤器
+  preferences Json?    // 用户偏好设置
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("elk_viewer_configs")
+}
+
+// ========================================
+// CI/CD 相关模型
+// ========================================
+
+// CI/CD 项目
+model CICDProject {
+  id              String      @id @default(cuid())
+  name            String      @db.VarChar(100)
+  description     String?     @db.Text
+  repositoryUrl   String      @db.VarChar(500)
+  repositoryType  String      @db.VarChar(50) // git, svn, etc.
+  branch          String      @db.VarChar(100) @default("main")
+  buildScript     String?     @db.Text
+  deployScript    String?     @db.Text
+  environment     String      @db.VarChar(50) // dev, test, prod
+  serverId        String?     // 关联的主机ID
+  gitCredentialId String?     // 关联的Git认证配置ID
+  isActive        Boolean     @default(true)
+  userId          String      // 创建者
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  server          Server?         @relation(fields: [serverId], references: [id], onDelete: SetNull)
+  gitCredential   GitCredential?  @relation(fields: [gitCredentialId], references: [id], onDelete: SetNull)
+  deployments     Deployment[]
+  pipelines       Pipeline[]
+  approvalWorkflows ApprovalWorkflow[]
+
+  @@map("cicd_projects")
+  @@index([userId])
+  @@index([serverId])
+  @@index([gitCredentialId])
+  @@index([isActive])
+  @@index([environment])
+}
+
+// Jenkins 配置 - 独立管理平台
+model JenkinsConfig {
+  id              String      @id @default(cuid())
+  name            String      @db.VarChar(100)
+  description     String?     @db.Text
+  serverUrl       String      @db.VarChar(500)
+  username        String?     @db.VarChar(100)
+  apiToken        String?     @db.VarChar(500) // 加密存储
+  webhookUrl      String?     @db.VarChar(500)
+  config          Json?       // Jenkins 服务器配置
+  isActive        Boolean     @default(true)
+  lastTestAt      DateTime?   // 最后测试连接时间
+  testStatus      String?     @db.VarChar(50) // connected, disconnected, error
+  userId          String      // 创建者
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  builds          Build[]
+  jobConfigs      JenkinsJobConfig[]
+  jobGroups       JenkinsJobGroup[]
+  jobExecutions   JenkinsJobExecution[]
+  configApprovers JenkinsConfigApprover[]
+
+  @@map("jenkins_configs")
+  @@index([userId])
+  @@index([isActive])
+  @@index([testStatus])
+}
+
+// Jenkins Job 配置 - 单个Job的配置管理
+model JenkinsJobConfig {
+  id              String      @id @default(cuid())
+  jenkinsConfigId String      // 关联的Jenkins服务器配置
+  jobName         String      @db.VarChar(200) // Jenkins中的Job名称
+  displayName     String?     @db.VarChar(200) // 显示名称
+  description     String?     @db.Text
+  requireApproval Boolean     @default(true) // 是否需要审批
+  approvalRoles   Json?       // 审批角色配置
+  parameters      Json?       // Job参数配置
+  schedule        Json?       // 定时执行配置
+  enabled         Boolean     @default(true) // 是否启用
+  isActive        Boolean     @default(true)
+  userId          String      // 配置创建者
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  jenkinsConfig   JenkinsConfig @relation(fields: [jenkinsConfigId], references: [id], onDelete: Cascade)
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("jenkins_job_configs")
+  @@index([jenkinsConfigId])
+  @@index([userId])
+  @@index([isActive])
+  @@index([enabled])
+  @@unique([jenkinsConfigId, jobName])
+}
+
+// Jenkins 任务分组 - 用户自定义任务分组
+model JenkinsJobGroup {
+  id              String      @id @default(cuid())
+  jenkinsConfigId String      // 关联的Jenkins服务器配置
+  name            String      @db.VarChar(100) // 分组名称
+  description     String?     @db.Text // 分组描述
+  color           String?     @db.VarChar(20) // 分组颜色标识
+  icon            String?     @db.VarChar(50) // 分组图标
+  sortOrder       Int         @default(0) // 排序顺序
+  isActive        Boolean     @default(true)
+  userId          String      // 创建者
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  jenkinsConfig   JenkinsConfig @relation(fields: [jenkinsConfigId], references: [id], onDelete: Cascade)
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobMappings     JenkinsJobGroupMapping[]
+
+  @@map("jenkins_job_groups")
+  @@index([jenkinsConfigId])
+  @@index([userId])
+  @@index([isActive])
+  @@index([sortOrder])
+}
+
+// Jenkins 任务分组映射 - 任务与分组的关联关系
+model JenkinsJobGroupMapping {
+  id              String      @id @default(cuid())
+  groupId         String      // 分组ID
+  jobName         String      @db.VarChar(200) // Jenkins Job名称
+  sortOrder       Int         @default(0) // 在分组内的排序
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  group           JenkinsJobGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@map("jenkins_job_group_mappings")
+  @@index([groupId])
+  @@index([jobName])
+  @@index([isActive])
+  @@unique([groupId, jobName])
+}
+
+// 流水线
+model Pipeline {
+  id              String      @id @default(cuid())
+  projectId       String
+  name            String      @db.VarChar(100)
+  description     String?     @db.Text
+  jenkinsJobName  String      @db.VarChar(200)
+  parameters      Json?       // 流水线参数配置
+  triggers        Json?       // 触发器配置
+  stages          Json?       // 流水线阶段配置
+  isActive        Boolean     @default(true)
+  userId          String      // 创建者
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  project         CICDProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  builds          Build[]
+
+  @@map("pipelines")
+  @@index([projectId])
+  @@index([userId])
+  @@index([isActive])
+}
+
+// Jenkins构建记录
+model Build {
+  id              String      @id @default(cuid())
+  jenkinsConfigId String
+  pipelineId      String?
+  buildNumber     Int
+  jenkinsJobName  String      @db.VarChar(200)
+  status          BuildStatus @default(pending)
+  result          String?     @db.VarChar(50) // SUCCESS, FAILURE, UNSTABLE, ABORTED
+  startedAt       DateTime?
+  completedAt     DateTime?
+  duration        Int?        // 构建时长（秒）
+  queueId         String?     @db.VarChar(100) // Jenkins队列ID
+  buildUrl        String?     @db.VarChar(500)
+  parameters      Json?       // 构建参数
+  artifacts       Json?       // 构建产物
+  logs            String?     @db.Text // 构建日志
+  userId          String      // 触发者
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  jenkinsConfig   JenkinsConfig @relation(fields: [jenkinsConfigId], references: [id], onDelete: Cascade)
+  pipeline        Pipeline?     @relation(fields: [pipelineId], references: [id], onDelete: SetNull)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("builds")
+  @@index([jenkinsConfigId])
+  @@index([pipelineId])
+  @@index([userId])
+  @@index([status])
+  @@index([buildNumber])
+  @@index([startedAt])
+}
+
+// 构建状态枚举
+enum BuildStatus {
+  pending     // 等待中
+  queued      // 队列中
+  running     // 运行中
+  success     // 成功
+  failed      // 失败
+  aborted     // 已中止
+  unstable    // 不稳定
+}
+
+// 部署任务
+model Deployment {
+  id              String          @id @default(cuid())
+  projectId       String
+  name            String          @db.VarChar(100)
+  description     String?         @db.Text
+  environment     String          @db.VarChar(50) // dev, test, prod
+  version         String?         @db.VarChar(100)
+  status          DeploymentStatus @default(pending)
+  buildNumber     Int?            // 关联的构建号
+  deployScript    String?         @db.Text
+  rollbackScript  String?         @db.Text
+  scheduledAt     DateTime?       // 计划部署时间
+  startedAt       DateTime?       // 开始部署时间
+  completedAt     DateTime?       // 完成部署时间
+  duration        Int?            // 部署时长（秒）
+  logs            String?         @db.Text // 部署日志
+  config          Json?           // 部署配置
+  userId          String          // 创建者
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  project         CICDProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  approvals       DeploymentApproval[]
+
+  @@map("deployments")
+  @@index([projectId])
+  @@index([userId])
+  @@index([status])
+  @@index([environment])
+  @@index([scheduledAt])
+}
+
+// 部署状态枚举
+enum DeploymentStatus {
+  pending         // 等待审批
+  approved        // 已审批
+  rejected        // 已拒绝
+  scheduled       // 已计划
+  deploying       // 部署中
+  success         // 部署成功
+  failed          // 部署失败
+  rolled_back     // 已回滚
+}
+
+// 部署审批
+model DeploymentApproval {
+  id              String          @id @default(cuid())
+  deploymentId    String
+  approverId      String
+  status          ApprovalStatus  @default(pending)
+  comments        String?         @db.Text
+  approvedAt      DateTime?
+  level           Int             @default(1) // 审批级别
+  isRequired      Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  deployment      Deployment      @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+  approver        User            @relation(fields: [approverId], references: [id], onDelete: Cascade)
+
+  @@map("deployment_approvals")
+  @@index([deploymentId])
+  @@index([approverId])
+  @@index([status])
+  @@index([level])
+}
+
+// 审批状态枚举
+enum ApprovalStatus {
+  pending     // 待审批
+  approved    // 已批准
+  rejected    // 已拒绝
+  expired     // 已过期
+}
+
+// 审批类型枚举
+enum ApprovalType {
+  user_registration    // 用户注册审批
+  deployment          // 部署审批
+  cicd_pipeline       // CI/CD流水线审批
+  system_config       // 系统配置审批
+  jenkins_job         // Jenkins任务审批
+}
+
+// 审批操作记录表
+model ApprovalRecord {
+  id              String          @id @default(cuid())
+  approvalType    ApprovalType    // 审批类型
+  targetId        String          // 目标对象ID（用户ID、部署ID等）
+  targetName      String          @db.VarChar(255) // 目标对象名称
+  operatorId      String          // 操作人ID
+  operatorName    String          @db.VarChar(100) // 操作人姓名
+  action          ApprovalStatus  // 操作类型（approved/rejected）
+  comment         String?         @db.Text // 操作备注
+  operatedAt      DateTime        @default(now()) // 操作时间
+  metadata        Json?           // 额外的元数据信息
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  operator        User            @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+
+  @@map("approval_records")
+  @@index([approvalType])
+  @@index([targetId])
+  @@index([operatorId])
+  @@index([action])
+  @@index([operatedAt])
+}
+
+// 审批工作流
+model ApprovalWorkflow {
+  id              String          @id @default(cuid())
+  name            String          @db.VarChar(100)
+  description     String?         @db.Text
+  environment     String          @db.VarChar(20) // dev, test, prod
+  projectId       String?         // 可选，特定项目的工作流
+  isDefault       Boolean         @default(false) // 是否为默认工作流
+  config          Json            // 工作流配置
+  isActive        Boolean         @default(true)
+  userId          String          // 创建者
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  project         CICDProject?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("approval_workflows")
+  @@index([environment])
+  @@index([projectId])
+  @@index([isDefault])
+  @@index([userId])
+}
+
+// ========================================
+// Jenkins Job 审批管理表
+// ========================================
+
+// Jenkins Job执行记录表
+model JenkinsJobExecution {
+  id              String          @id @default(cuid())
+  configId        String          // 关联的Jenkins配置ID
+  jobName         String          @db.VarChar(200) // Jenkins任务名称
+  operationType   String          @db.VarChar(50) // 操作类型: build, enable, disable, delete
+  status          String          @db.VarChar(50) @default("pending") // pending, approved, rejected, executing, completed, failed
+  requestedBy     String          // 申请人ID
+  reason          String?         @db.Text // 申请原因
+  parameters      Json?           // 执行参数
+  executionResult Json?           // 执行结果
+  executedAt      DateTime?       // 执行时间
+  completedAt     DateTime?       // 完成时间
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // 关系
+  config          JenkinsConfig   @relation(fields: [configId], references: [id], onDelete: Cascade)
+  requester       User            @relation("JenkinsJobExecutionRequester", fields: [requestedBy], references: [id], onDelete: Cascade)
+  approvals       JenkinsJobApproval[]
+  notifiers       JenkinsJobNotifier[]
+
+  @@map("jenkins_job_executions")
+  @@index([configId])
+  @@index([requestedBy])
+  @@index([status])
+  @@index([operationType])
+}
+
+// Jenkins Job审批表
+model JenkinsJobApproval {
+  id              String              @id @default(cuid())
+  executionId     String              // 关联的执行记录ID
+  approverId      String              // 审批人ID
+  level           Int                 @default(1) // 审批级别
+  status          ApprovalStatus      @default(pending) // 审批状态
+  comments        String?             @db.Text // 审批意见
+  approvedAt      DateTime?           // 审批时间
+  expiresAt       DateTime?           // 过期时间
+  isRequired      Boolean             @default(true) // 是否必需
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  // 关系
+  execution       JenkinsJobExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  approver        User                @relation("JenkinsJobApprovalApprover", fields: [approverId], references: [id], onDelete: Cascade)
+
+  @@map("jenkins_job_approvals")
+  @@index([executionId])
+  @@index([approverId])
+  @@index([status])
+  @@index([level])
+}
+
+// Jenkins配置审批人员设置表
+model JenkinsConfigApprover {
+  id              String          @id @default(cuid())
+  configId        String          // Jenkins配置ID
+  approverId      String          // 审批人ID
+  level           Int             @default(1) // 审批级别
+  isActive        Boolean         @default(true) // 是否启用
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // 关系
+  config          JenkinsConfig   @relation(fields: [configId], references: [id], onDelete: Cascade)
+  approver        User            @relation("JenkinsConfigApprover", fields: [approverId], references: [id], onDelete: Cascade)
+
+  @@map("jenkins_config_approvers")
+  @@unique([configId, approverId])
+  @@index([configId])
+  @@index([approverId])
+  @@index([isActive])
+}
+
+// Jenkins任务执行通知人员表
+model JenkinsJobNotifier {
+  id              String              @id @default(cuid())
+  executionId     String              // 关联的执行记录ID
+  notifierId      String              // 通知人员ID
+  notifyOnSubmit  Boolean             @default(true) // 提交时通知
+  notifyOnApprove Boolean             @default(true) // 审批通过时通知
+  notifyOnReject  Boolean             @default(true) // 审批拒绝时通知
+  notifyOnExecute Boolean             @default(true) // 执行时通知
+  notifyOnComplete Boolean            @default(true) // 完成时通知
+  isActive        Boolean             @default(true) // 是否启用
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  // 关系
+  execution       JenkinsJobExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  notifier        User                @relation("JenkinsJobNotifier", fields: [notifierId], references: [id], onDelete: Cascade)
+
+  @@map("jenkins_job_notifiers")
+  @@unique([executionId, notifierId])
+  @@index([executionId])
+  @@index([notifierId])
+  @@index([isActive])
+}
+
+// 信息通知表（区别于审批通知）
+model InfoNotification {
+  id              String          @id @default(cuid())
+  type            String          @db.VarChar(50) // 通知类型: jenkins_submit, jenkins_approve, jenkins_reject, jenkins_execute, jenkins_complete
+  title           String          @db.VarChar(200) // 通知标题
+  content         String          @db.Text // 通知内容
+  userId          String          // 接收人ID
+  isRead          Boolean         @default(false) // 是否已读
+  readAt          DateTime?       // 阅读时间
+  actionUrl       String?         @db.VarChar(500) // 操作链接
+  actionText      String?         @db.VarChar(100) // 操作按钮文本
+  metadata        Json?           // 元数据
+  expiresAt       DateTime?       // 过期时间
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // 关系
+  user            User            @relation("InfoNotificationUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("info_notifications")
+  @@index([userId])
+  @@index([type])
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([expiresAt])
+}
+
+// ========================================
+// Git 认证管理表
+// ========================================
+
+model GitCredential {
+  id                    String      @id @default(cuid())
+  name                  String      @db.VarChar(100)  // 认证配置名称
+  platform              String      @db.VarChar(50)   // git平台: github, gitlab, gitee, bitbucket
+  authType              String      @db.VarChar(50)   // 认证类型: token, ssh, username_password
+  encryptedCredentials  String      @db.Text          // 加密后的认证信息(JSON)
+  isDefault             Boolean     @default(false)   // 是否为默认认证
+  isActive              Boolean     @default(true)    // 是否启用
+  userId                String      // 用户ID
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projects              CICDProject[] // 使用此认证配置的项目
+
+  @@map("git_credentials")
+  @@index([userId])
+  @@index([platform])
+  @@index([authType])
+  @@index([isDefault])
+  @@index([isActive])
+}
+
+// ========================================
+// AI 模型配置管理表
+// ========================================
+
+// 用户模型配置表
+model ModelConfig {
+  id          String   @id @default(cuid())
+  userId      String   // 所属用户ID
+  modelName   String   @db.VarChar(100)  // 模型名称，如 gpt-4o, deepseek-chat
+  displayName String   @db.VarChar(100)  // 显示名称
+  provider    String   @db.VarChar(50)   // 提供商：openai-compatible, deepseek, gemini, qwen, doubao
+  apiKey      String   @db.VarChar(500)  // API密钥（加密存储）
+  baseUrl     String?  @db.VarChar(500)  // 自定义API基础URL
+  description String?  @db.Text          // 模型描述
+  isActive    Boolean  @default(true)    // 是否启用
+  isDefault   Boolean  @default(false)   // 是否为默认模型
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关系
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userModelSelection UserModelSelection[]
+
+  @@map("model_configs")
+  @@index([userId])
+  @@index([provider])
+  @@index([isActive])
+  @@index([isDefault])
+  @@unique([userId, modelName]) // 同一用户不能有重复的模型名称
+}
+
+// 用户模型选择表
+model UserModelSelection {
+  id              String   @id @default(cuid())
+  userId          String   @unique // 每个用户只能有一个当前选择
+  selectedModelId String   // 选择的模型ID
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // 关系
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  selectedModel ModelConfig @relation(fields: [selectedModelId], references: [id], onDelete: Cascade)
+
+  @@map("user_model_selections")
+  @@index([userId])
+  @@index([selectedModelId])
+}

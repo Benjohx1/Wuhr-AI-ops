@@ -11,67 +11,12 @@
       "users:delete",
       "cicd:all",
       "servers:all",
-      "config:all"
+      "config:all",
+      "admin:all"
     ],
     "isActive": true,
     "createdAt": "2025-07-01T02:39:54.121Z",
     "updatedAt": "2025-07-01T02:39:54.121Z",
-    "lastLoginAt": null
-  },
-  {
-    "id": "user_1751337603961_q3d94muma",
-    "username": "manager",
-    "email": "manager@wuhr.ai",
-    "password": "$2a$12$jYAHzyyeuLFYU1Kb7nYpjuhDjLHGw0SIpRbb3ulWO3Q7bAdlCgd3C",
-    "role": "manager",
-    "permissions": [
-      "users:read",
-      "cicd:read",
-      "cicd:write",
-      "cicd:execute",
-      "servers:read",
-      "servers:write",
-      "config:read",
-      "config:write"
-    ],
-    "isActive": true,
-    "createdAt": "2025-07-01T02:40:03.961Z",
-    "updatedAt": "2025-07-01T02:40:03.961Z",
-    "lastLoginAt": null
-  },
-  {
-    "id": "user_1751337604228_jgc6wl4p4",
-    "username": "developer",
-    "email": "developer@wuhr.ai",
-    "password": "$2a$12$p0RDJpTXXY6INPvJRyNUSOWtGaV09dhWp1Xli7p0gVjLwT8h.bO/W",
-    "role": "developer",
-    "permissions": [
-      "users:read",
-      "cicd:read",
-      "cicd:execute",
-      "servers:read",
-      "config:read"
-    ],
-    "isActive": true,
-    "createdAt": "2025-07-01T02:40:04.228Z",
-    "updatedAt": "2025-07-01T02:40:04.228Z",
-    "lastLoginAt": null
-  },
-  {
-    "id": "user_1751337604528_xky3bp2g5",
-    "username": "viewer",
-    "email": "viewer@wuhr.ai",
-    "password": "$2a$12$Qo9jqYWRvr9rkiCajSfuaO72hUOAAAsly8uqSc3huLu/40/RKH0mO",
-    "role": "viewer",
-    "permissions": [
-      "users:read",
-      "cicd:read",
-      "servers:read",
-      "config:read"
-    ],
-    "isActive": true,
-    "createdAt": "2025-07-01T02:40:04.528Z",
-    "updatedAt": "2025-07-01T02:40:04.528Z",
     "lastLoginAt": null
   }
 ]

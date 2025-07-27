@@ -1,10 +1,10 @@
 {
   "id": 1,
-  "serverUrl": "http://localhost:3000/",
+  "serverUrl": "http://localhost:3001/",
   "username": "admin",
-  "password": "ab54df19cae8f30632a9da3fa92e466a:77211cc7454cb7198cc8333ee0eb0ef79dac038bc8e9c22c439163bd25ef485ce1b04b7b3fea94aff8b8320a248d3224120360d7fe9f22c6e4cf5db6179dbbd18645eee0cd4686023325e889ef16116d",
+  "password": "admin",
   "apiKey": null,
-  "orgId": "3",
+  "orgId": "1",
   "enabled": 1,
-  "updatedAt": "2025-07-10T09:05:24.535Z"
+  "updatedAt": "2025-01-30T00:00:00.000Z"
 }

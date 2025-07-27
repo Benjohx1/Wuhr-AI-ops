@@ -401,7 +401,21 @@ For more questions, see: [FAQ](./docs/FAQ.md)
 
 ## 📄 License
 
-This project is licensed under the [MIT License](./LICENSE).
+This project is licensed under the [MIT License (Modified)](./LICENSE).
+
+### 🏢 Commercial Use
+
+- **Personal learning and non-commercial use**: Completely free
+- **Commercial use**: Please contact the author for authorization (1139804291@qq.com)
+- **Secondary development and redistribution**: Please contact the author for authorization (1139804291@qq.com)
+- **Educational institutions**: Free for teaching and academic research
+
+### 📝 Attribution Requirement
+
+When using this software, please retain the following attribution:
+```
+Powered by Wuhr AI Ops - https://github.com/st-lzh/Wuhr-AI-ops
+```
 
 ## 🙏 Acknowledgments
 

@@ -23,6 +23,7 @@ import {
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTheme } from '../../hooks/useGlobalState'
+import { usePermissions } from '../../hooks/usePermissions'
 import GlobalLoadingIndicator from '../GlobalLoadingIndicator'
 import NotificationBell from '../notifications/NotificationBell'
 import NotificationPanel from '../notifications/NotificationPanel'
@@ -43,13 +44,26 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const [openKeys, setOpenKeys] = useState<string[]>([])
   const { theme, toggleTheme, isDark } = useTheme()
   const pathname = usePathname()
+  const {
+    canAccessAI,
+    canAccessServers,
+    canAccessCICD,
+    canAccessApprovals,
+    canAccessMonitoring,
+    canAccessGrafana,
+    canAccessNotifications,
+    canAccessUsers,
+    canAccessPermissions,
+    canAccessConfig,
+    isAuthenticated,
+    user
+  } = usePermissions()
 
   // 根据当前路径确定默认打开的菜单
   const getDefaultOpenKeys = () => {
     // 定义接入管理的所有子页面路径
     const integrationPages = [
       '/monitor',           // Grafana配置
-      '/config/jenkins',    // Jenkins配置
       '/servers/logs'       // ELK日志
     ]
 
@@ -62,16 +76,18 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
     // 定义CI&CD管理的所有子页面路径
     const cicdPages = [
-      '/cicd/projects',     // 项目管理
-      '/cicd/deployments',  // 部署管理
-      '/cicd/builds',       // 构建管理
-      '/cicd/pipelines',    // 流水线管理
-      '/cicd/logs',         // 日志管理
-      '/cicd/tasks'         // 任务管理
+      '/cicd/projects',           // 持续集成
+      '/cicd/deployments',        // 持续部署
+      '/cicd/jenkins-deployments', // Jenkins部署任务
+      '/cicd/templates',          // 模板管理
+      '/cicd/builds',             // 构建管理
+      '/cicd/pipelines',          // 流水线管理
+      '/cicd/logs',               // 日志管理
+      '/cicd/tasks'               // 任务管理
     ]
 
     if (pathname.startsWith('/ai')) return ['/ai']
-    if (pathname.startsWith('/config') && !pathname.startsWith('/config/jenkins')) return ['/config']
+    if (pathname.startsWith('/config')) return ['/config']
     if (pathname.startsWith('/servers') && !pathname.startsWith('/servers/logs')) return ['/servers']
 
     // 检查是否在用户管理的任何子页面
@@ -99,56 +115,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   // 处理菜单展开状态变化
   const handleOpenChange = (keys: string[]) => {
-    // 定义接入管理的所有子页面路径
-    const integrationPages = [
-      '/monitor',           // Grafana配置（监控页面）
-      '/config/jenkins',    // Jenkins配置
-      '/config/grafana',    // Grafana配置
-      '/servers/logs'       // ELK日志
-    ]
-
-    // 定义用户管理的所有子页面路径
-    const userPages = [
-      '/users',             // 用户管理相关页面
-      '/cicd/approvals',    // 审批管理页面
-      '/notifications'      // 通知管理页面
-    ]
-
-    // 定义CI&CD管理的所有子页面路径
-    const cicdPages = [
-      '/cicd/projects',     // 项目管理
-      '/cicd/deployments',  // 部署管理
-      '/cicd/builds',       // 构建管理
-      '/cicd/pipelines',    // 流水线管理
-      '/cicd/logs',         // 日志管理
-      '/cicd/tasks'         // 任务管理
-    ]
-
-    // 检查当前是否在接入管理的任何子页面
-    const isInIntegrationPages = integrationPages.some(page => pathname.startsWith(page))
-    // 检查当前是否在用户管理的任何子页面
-    const isInUserPages = userPages.some(page => pathname.startsWith(page))
-    // 检查当前是否在CI&CD管理的任何子页面
-    const isInCicdPages = cicdPages.some(page => pathname.startsWith(page))
-
-    if (isInIntegrationPages && !keys.includes('/integration')) {
-      // 如果用户试图关闭接入管理菜单，但当前在其子页面，则强制保持展开
-      keys.push('/integration')
-      console.log('🔒 强制保持接入管理菜单展开，当前页面:', pathname)
-    }
-
-    if (isInUserPages && !keys.includes('/users')) {
-      // 如果用户试图关闭用户管理菜单，但当前在其子页面，则强制保持展开
-      keys.push('/users')
-      console.log('🔒 强制保持用户管理菜单展开，当前页面:', pathname)
-    }
-
-    if (isInCicdPages && !keys.includes('/cicd')) {
-      // 如果用户试图关闭CI&CD菜单，但当前在其子页面，则强制保持展开
-      keys.push('/cicd')
-      console.log('🔒 强制保持CI&CD菜单展开，当前页面:', pathname)
-    }
-
+    // 使用Antd Menu的默认行为，允许用户自由展开/折叠菜单
+    // 只在用户主动点击时更新状态，不强制保持展开
     setOpenKeys(keys)
   }
 
@@ -194,35 +162,53 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     fetchNotificationCount()
   }, [])
 
-  const menuItems = [
-    {
+  // 基于权限动态生成菜单项
+  const getMenuItems = () => {
+    const items = []
+
+    // 仪表盘 - 所有用户都可以访问
+    items.push({
       key: '/',
       icon: <DashboardOutlined />,
       label: <Link href="/">仪表盘</Link>,
-    },
-    {
-      key: '/ai/system',
-      icon: <RobotOutlined />,
-      label: <Link href="/ai/system">AI 助手</Link>,
-    },
-    {
-      key: '/users',
-      icon: <UserOutlined />,
-      label: '用户管理',
-      children: [
-        {
+    })
+
+    // AI助手
+    if (canAccessAI('write')) {
+      items.push({
+        key: '/ai/system',
+        icon: <RobotOutlined />,
+        label: <Link href="/ai/system">AI 助手</Link>,
+      })
+    }
+
+    // 用户管理
+    if (canAccessUsers('read') || canAccessPermissions('read') || canAccessApprovals('read') || canAccessNotifications('read')) {
+      const userChildren = []
+
+      if (canAccessUsers('read')) {
+        userChildren.push({
           key: '/users/info',
           label: <Link href="/users/info">用户信息</Link>,
-        },
-        {
+        })
+      }
+
+      if (canAccessPermissions('read')) {
+        userChildren.push({
           key: '/users/permissions',
           label: <Link href="/users/permissions">权限管理</Link>,
-        },
-        {
+        })
+      }
+
+      if (canAccessApprovals('read')) {
+        userChildren.push({
           key: '/cicd/approvals',
           label: <Link href="/cicd/approvals">审批管理</Link>,
-        },
-        {
+        })
+      }
+
+      if (canAccessNotifications('read')) {
+        userChildren.push({
           key: '/notifications',
           label: (
             <Link href="/notifications">
@@ -236,71 +222,113 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
               )}
             </Link>
           ),
-        },
-      ],
-    },
-    {
-      key: '/config',
-      icon: <SettingOutlined />,
-      label: '模型管理',
-      children: [
-        {
-          key: '/config/models',
-          label: <Link href="/config/models">模型配置</Link>,
-        },
-      ],
-    },
-    {
-      key: '/servers',
-      icon: <CloudServerOutlined />,
-      label: '主机管理',
-      children: [
-        {
-          key: '/servers/list',
-          label: <Link href="/servers/list">主机列表</Link>,
-        },
-      ],
-    },
-    {
-      key: '/cicd',
-      icon: <DeploymentUnitOutlined />,
-      label: 'CI&CD',
-      children: [
-        {
-          key: '/cicd/projects',
-          label: <Link href="/cicd/projects">项目管理</Link>,
-        },
-        {
-          key: '/cicd/deployments',
-          label: <Link href="/cicd/deployments">部署管理</Link>,
-        },
-      ],
-    },
-    {
-      key: '/integration',
-      icon: <ControlOutlined />,
-      label: '接入管理',
-      children: [
-        {
-          key: '/config/jenkins',
-          label: <Link href="/config/jenkins">Jenkins配置</Link>,
-        },
-        {
+        })
+      }
+
+      items.push({
+        key: '/users',
+        icon: <UserOutlined />,
+        label: '用户管理',
+        children: userChildren,
+      })
+    }
+
+    // 配置管理
+    if (canAccessConfig('read')) {
+      items.push({
+        key: '/config',
+        icon: <SettingOutlined />,
+        label: '模型管理',
+        children: [
+          {
+            key: '/config/models',
+            label: <Link href="/config/models">模型配置</Link>,
+          },
+        ],
+      })
+    }
+
+    // 主机管理
+    if (canAccessServers('read')) {
+      items.push({
+        key: '/servers',
+        icon: <CloudServerOutlined />,
+        label: '主机管理',
+        children: [
+          {
+            key: '/servers/list',
+            label: <Link href="/servers/list">主机列表</Link>,
+          },
+        ],
+      })
+    }
+
+    // CI/CD管理
+    if (canAccessCICD('read')) {
+      items.push({
+        key: '/cicd',
+        icon: <DeploymentUnitOutlined />,
+        label: 'CI&CD',
+        children: [
+          {
+            key: '/cicd/projects',
+            label: <Link href="/cicd/projects">持续集成</Link>,
+          },
+          {
+            key: '/cicd/deployments',
+            label: <Link href="/cicd/deployments">持续部署</Link>,
+          },
+          {
+            key: '/cicd/jenkins-deployments',
+            label: <Link href="/cicd/jenkins-deployments">Jenkins部署</Link>,
+          },
+          {
+            key: '/cicd/templates',
+            label: <Link href="/cicd/templates">模板管理</Link>,
+          },
+        ],
+      })
+    }
+
+    // 接入管理 - 基于配置和监控权限
+    if (canAccessConfig('read') || canAccessMonitoring('read') || canAccessGrafana('read')) {
+      const integrationChildren = []
+
+      if (canAccessServers('read')) {
+        integrationChildren.push({
           key: '/servers/logs',
           label: <Link href="/servers/logs">ELK日志</Link>,
-        },
-        {
+        })
+      }
+
+      if (canAccessGrafana('read')) {
+        integrationChildren.push({
           key: '/monitor',
-          label: <Link href="/monitor">Grafana配置</Link>,
-        },
-      ],
-    },
-    {
+          label: <Link href="/monitor">grafana监控</Link>,
+        })
+      }
+
+      if (integrationChildren.length > 0) {
+        items.push({
+          key: '/integration',
+          icon: <ControlOutlined />,
+          label: '接入管理',
+          children: integrationChildren,
+        })
+      }
+    }
+
+    // 工具箱 - 所有用户都可以访问
+    items.push({
       key: '/tools',
       icon: <ToolOutlined />,
       label: <Link href="/tools">工具箱</Link>,
-    },
-  ]
+    })
+
+    return items
+  }
+
+  const menuItems = getMenuItems()
 
   // 处理通知点击
   const handleNotificationClick = () => {
@@ -490,9 +518,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                   size="small"
                   src="https://wuhrai-wordpress.oss-cn-hangzhou.aliyuncs.com/%E5%9B%BE%E6%A0%87/%E5%88%9B%E5%BB%BA%E8%B5%9B%E5%8D%9A%E6%9C%8B%E5%85%8B%E5%9B%BE%E6%A0%87%20%283%29.png"
                 />
-                <span className={`text-sm ${
+                <span className={`text-sm truncate max-w-32 ${
                   isDark ? 'text-gray-300' : 'text-gray-700'
-                }`}>运维工程师</span>
+                }`} title={user?.email ? `${user.username} (${user.email})` : user?.username || '运维工程师'}>
+                  {user?.username && user?.email
+                    ? `${user.username} (${user.email})`
+                    : user?.username || user?.email || '运维工程师'}
+                </span>
               </div>
             </Dropdown>
           </div>

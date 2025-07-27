@@ -25,14 +25,23 @@ export function AuthInitializer({ children }: AuthInitializerProps) {
         }
 
         // 首先尝试验证当前认证状态
+        console.log('🔍 开始验证认证状态...')
         const verifyResponse = await fetch('/api/auth/verify', {
-          credentials: 'include'
+          method: 'GET',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json'
+          }
         })
+
+        console.log('🔍 验证响应状态:', verifyResponse.status)
 
         if (verifyResponse.ok) {
           const verifyData = await verifyResponse.json()
-          if (verifyData.success && verifyData.data.valid) {
-            console.log('✅ 认证状态有效')
+          console.log('🔍 验证响应数据:', verifyData)
+
+          if (verifyData.success && verifyData.data && verifyData.data.valid) {
+            console.log('✅ 认证状态有效，用户:', verifyData.data.user?.username)
             // 清除退出标记
             sessionStorage.removeItem('user_logged_out')
             // 更新全局状态
@@ -41,53 +50,20 @@ export function AuthInitializer({ children }: AuthInitializerProps) {
               payload: {
                 user: verifyData.data.user,
                 accessToken: 'valid', // 实际token在httpOnly cookie中
-                expiresIn: 900 // 15分钟
+                expiresIn: 7200 // 2小时，与登录API保持一致
               }
             })
             return
+          } else {
+            console.log('❌ 认证状态无效:', verifyData)
           }
+        } else {
+          console.log('❌ 验证请求失败:', verifyResponse.status)
         }
 
-        // 如果是401错误，记录详细信息用于调试
+        // 如果是401错误，说明用户未认证
         if (verifyResponse.status === 401) {
-          console.log('🔍 检测到401错误，获取详细诊断信息...')
-          try {
-            const debugResponse = await fetch('/api/debug/auth-status', {
-              credentials: 'include'
-            })
-            if (debugResponse.ok) {
-              const debugData = await debugResponse.json()
-              console.log('🔍 认证诊断信息:', debugData.data)
-            }
-          } catch (debugError) {
-            console.warn('获取诊断信息失败:', debugError)
-          }
-        }
-
-        // 如果验证失败，尝试刷新token（但不在用户主动退出后）
-        if (logoutFlag !== 'true') {
-          console.log('🔄 尝试刷新认证状态')
-          const refreshResponse = await fetch('/api/auth/refresh', {
-            method: 'POST',
-            credentials: 'include'
-          })
-
-          if (refreshResponse.ok) {
-            const refreshData = await refreshResponse.json()
-            if (refreshData.success) {
-              console.log('✅ 认证状态已恢复')
-              // 更新全局状态
-              dispatch({
-                type: 'AUTH_LOGIN_SUCCESS',
-                payload: {
-                  user: refreshData.data.user,
-                  accessToken: 'valid', // 实际token在httpOnly cookie中
-                  expiresIn: 900 // 15分钟
-                }
-              })
-              return
-            }
-          }
+          console.log('🔍 检测到401错误，用户未认证')
         }
 
         console.log('ℹ️ 未找到有效的认证状态，用户需要重新登录')

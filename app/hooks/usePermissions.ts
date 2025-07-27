@@ -3,6 +3,7 @@
 import { useCallback } from 'react'
 import { useGlobalState } from '../contexts/GlobalStateContext'
 import { AuthUser } from '../types/global'
+import { PERMISSION_CODES, hasPermission, hasAnyPermission, hasAllPermissions, getModulePermissions } from '../../lib/auth/permissions'
 
 // 角色层级定义
 const ROLE_HIERARCHY = {
@@ -26,27 +27,82 @@ export function usePermissions() {
   const { auth } = state
 
   // 基础权限检查
-  const hasPermission = useCallback((permission: string): boolean => {
+  const hasPermissionLocal = useCallback((permission: string): boolean => {
     if (!auth.isAuthenticated || !auth.user) return false
     if (auth.user.role === 'admin') return true // 管理员拥有所有权限
-    return auth.permissions.includes(permission)
+    return hasPermission(auth.permissions || [], permission)
   }, [auth.isAuthenticated, auth.user, auth.permissions])
 
-  const hasAnyPermission = useCallback((permissions: string[]): boolean => {
-    return permissions.some(permission => hasPermission(permission))
-  }, [hasPermission])
+  const hasAnyPermissionLocal = useCallback((permissions: string[]): boolean => {
+    if (!auth.isAuthenticated || !auth.user) return false
+    if (auth.user.role === 'admin') return true
+    return hasAnyPermission(auth.permissions || [], permissions)
+  }, [auth.isAuthenticated, auth.user, auth.permissions])
 
-  const hasAllPermissions = useCallback((permissions: string[]): boolean => {
-    return permissions.every(permission => hasPermission(permission))
-  }, [hasPermission])
+  const hasAllPermissionsLocal = useCallback((permissions: string[]): boolean => {
+    if (!auth.isAuthenticated || !auth.user) return false
+    if (auth.user.role === 'admin') return true
+    return hasAllPermissions(auth.permissions || [], permissions)
+  }, [auth.isAuthenticated, auth.user, auth.permissions])
 
   const hasRole = useCallback((role: AuthUser['role']): boolean => {
     return auth.user?.role === role
   }, [auth.user])
 
   const canAccess = useCallback((resource: string, action: string): boolean => {
-    return hasPermission(`${resource}:${action}`)
-  }, [hasPermission])
+    return hasPermissionLocal(`${resource}:${action}`)
+  }, [hasPermissionLocal])
+
+  // 新的模块权限检查方法
+  const checkModulePermission = useCallback((module: string, action: 'read' | 'write'): boolean => {
+    if (!auth.isAuthenticated || !auth.user) return false
+    if (auth.user.role === 'admin') return true
+
+    const modulePermissions = getModulePermissions(module)
+    const requiredPermission = action === 'read' ? modulePermissions.read : modulePermissions.write
+    return hasPermissionLocal(requiredPermission)
+  }, [auth.isAuthenticated, auth.user, hasPermissionLocal])
+
+  // 具体模块权限检查
+  const canAccessUsers = useCallback((action: 'read' | 'write' = 'read'): boolean => {
+    return checkModulePermission('users', action)
+  }, [checkModulePermission])
+
+  const canAccessPermissions = useCallback((action: 'read' | 'write' = 'read'): boolean => {
+    return checkModulePermission('permissions', action)
+  }, [checkModulePermission])
+
+  const canAccessServers = useCallback((action: 'read' | 'write' = 'read'): boolean => {
+    return checkModulePermission('servers', action)
+  }, [checkModulePermission])
+
+  const canAccessCICD = useCallback((action: 'read' | 'write' = 'read'): boolean => {
+    return checkModulePermission('cicd', action)
+  }, [checkModulePermission])
+
+  const canAccessApprovals = useCallback((action: 'read' | 'write' = 'read'): boolean => {
+    return checkModulePermission('approvals', action)
+  }, [checkModulePermission])
+
+  const canAccessNotifications = useCallback((action: 'read' | 'write' = 'read'): boolean => {
+    return checkModulePermission('notifications', action)
+  }, [checkModulePermission])
+
+  const canAccessConfig = useCallback((action: 'read' | 'write' = 'read'): boolean => {
+    return checkModulePermission('config', action)
+  }, [checkModulePermission])
+
+  const canAccessAI = useCallback((action: 'read' | 'write' = 'read'): boolean => {
+    return checkModulePermission('ai', action)
+  }, [checkModulePermission])
+
+  const canAccessMonitoring = useCallback((action: 'read' | 'write' = 'read'): boolean => {
+    return checkModulePermission('monitoring', action)
+  }, [checkModulePermission])
+
+  const canAccessGrafana = useCallback((action: 'read' | 'write' = 'read'): boolean => {
+    return checkModulePermission('grafana', action)
+  }, [checkModulePermission])
 
   // 检查角色权限（支持层级）
   const checkRole = useCallback((requiredRole: AuthUser['role']): boolean => {
@@ -60,8 +116,8 @@ export function usePermissions() {
 
   // 检查具体权限
   const checkPermission = useCallback((permission: string): boolean => {
-    return hasPermission(permission)
-  }, [hasPermission])
+    return hasPermissionLocal(permission)
+  }, [hasPermissionLocal])
 
   // 检查资源访问权限
   const checkResourceAccess = useCallback((resourcePath: string): boolean => {
@@ -107,9 +163,9 @@ export function usePermissions() {
         return checkRole('viewer')
       
       default:
-        return hasPermission(action)
+        return hasPermissionLocal(action)
     }
-  }, [auth.isAuthenticated, auth.user, checkRole, hasPermission])
+  }, [auth.isAuthenticated, auth.user, checkRole, hasPermissionLocal])
 
   // 权限验证组合函数
   const verifyAccess = useCallback((
@@ -141,9 +197,9 @@ export function usePermissions() {
     // 检查具体权限
     if (requiredPermissions.length > 0) {
       const hasPermissions = mode === 'all'
-        ? hasAllPermissions(requiredPermissions)
-        : hasAnyPermission(requiredPermissions)
-      
+        ? hasAllPermissionsLocal(requiredPermissions)
+        : hasAnyPermissionLocal(requiredPermissions)
+
       if (!hasPermissions) {
         return false
       }
@@ -169,8 +225,8 @@ export function usePermissions() {
     auth.isAuthenticated,
     auth.user,
     checkRole,
-    hasAllPermissions,
-    hasAnyPermission,
+    hasAllPermissionsLocal,
+    hasAnyPermissionLocal,
     checkResourceAccess,
     checkOwnership,
     canExecuteAction
@@ -207,12 +263,12 @@ export function usePermissions() {
 
   return {
     // 基础权限检查
-    hasPermission,
-    hasAnyPermission,
-    hasAllPermissions,
+    hasPermission: hasPermissionLocal,
+    hasAnyPermission: hasAnyPermissionLocal,
+    hasAllPermissions: hasAllPermissionsLocal,
     hasRole,
     canAccess,
-    
+
     // 增强权限检查
     checkRole,
     checkPermission,
@@ -220,11 +276,24 @@ export function usePermissions() {
     checkOwnership,
     canExecuteAction,
     verifyAccess,
-    
+
+    // 模块权限检查
+    checkModulePermission,
+    canAccessUsers,
+    canAccessPermissions,
+    canAccessServers,
+    canAccessCICD,
+    canAccessApprovals,
+    canAccessNotifications,
+    canAccessConfig,
+    canAccessAI,
+    canAccessMonitoring,
+    canAccessGrafana,
+
     // 工具方法
     getAccessiblePaths,
     getPermissionSummary,
-    
+
     // 状态信息
     permissions: auth.permissions,
     role: auth.user?.role,

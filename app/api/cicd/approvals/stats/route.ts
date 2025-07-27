@@ -363,7 +363,7 @@ export async function GET(request: NextRequest) {
           approvedAt: approval.approvedAt,
           type: 'deployment' as const,
           deploymentName: approval.deployment.name,
-          projectName: approval.deployment.project.name,
+          projectName: approval.deployment.project?.name || '未知项目',
           environment: approval.deployment.environment
         })),
         ...recentJenkinsApprovals.map(approval => ({
@@ -372,7 +372,7 @@ export async function GET(request: NextRequest) {
           approvedAt: approval.approvedAt,
           type: 'jenkins' as const,
           deploymentName: approval.execution.jobName,
-          projectName: approval.execution.config.name,
+          projectName: approval.execution.config?.name || '未知配置',
           environment: approval.execution.operationType
         })),
         ...recentUserRegistrationApprovals.map(approval => ({

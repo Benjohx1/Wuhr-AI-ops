@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '../../../../../../lib/auth/apiHelpers-new'
 import { getPrismaClient } from '../../../../../../lib/config/database'
-import { SimplifiedDeploymentExecutor } from '../../../../../../lib/deployment/simplifiedDeploymentExecutor'
+import { deploymentExecutionService } from '../../../../../../lib/services/deploymentExecutionService'
 
-// 开始部署
+// 启动部署
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    // 权限检查
     const authResult = await requireAuth(request)
     if (!authResult.success) {
       return authResult.response
@@ -17,11 +18,11 @@ export async function POST(
     const { user } = authResult
     const deploymentId = params.id
 
-    console.log('🚀 开始部署:', { deploymentId, userId: user.id })
+    console.log(`🚀 启动部署: ${deploymentId}`)
 
     const prisma = await getPrismaClient()
 
-    // 查找部署任务
+    // 获取部署详情
     const deployment = await prisma.deployment.findUnique({
       where: { id: deploymentId },
       include: {
@@ -30,14 +31,8 @@ export async function POST(
             id: true,
             name: true,
             repositoryUrl: true,
-            branch: true,
-            buildScript: true,
-            deployScript: true,
-            serverId: true
+            branch: true
           }
-        },
-        approvals: {
-          where: { status: 'pending' }
         }
       }
     })
@@ -49,141 +44,64 @@ export async function POST(
       }, { status: 404 })
     }
 
-    // 检查权限
-    if (deployment.userId !== user.id) {
+    // 检查部署状态
+    if (deployment.status === 'deploying') {
       return NextResponse.json({
         success: false,
-        error: '无权限操作此部署任务'
-      }, { status: 403 })
-    }
-
-    // 检查状态
-    if (deployment.status !== 'approved' && deployment.status !== 'scheduled') {
-      return NextResponse.json({
-        success: false,
-        error: '只有已审批或已计划的部署任务才能开始部署'
+        error: '部署任务正在运行中'
       }, { status: 400 })
     }
 
-    // 检查是否有待审批的审批
-    if (deployment.approvals.length > 0) {
+    if (deployment.status === 'success') {
       return NextResponse.json({
         success: false,
-        error: '存在待审批的审批，无法开始部署'
+        error: '部署任务已完成'
       }, { status: 400 })
     }
 
-    // 更新部署状态为部署中
-    const updatedDeployment = await prisma.deployment.update({
-      where: { id: deploymentId },
-      data: {
-        status: 'deploying',
-        startedAt: new Date(),
-        logs: '部署开始...\n'
+    // 检查是否需要审批
+    const hasApprovalUsers = deployment.approvalUsers && Array.isArray(deployment.approvalUsers) && deployment.approvalUsers.length > 0
+    if (hasApprovalUsers && deployment.status !== 'approved') {
+      return NextResponse.json({
+        success: false,
+        error: '部署任务需要审批后才能启动'
+      }, { status: 400 })
+    }
+
+    console.log(`✅ 部署启动成功: ${deployment.name}`)
+
+    // 异步执行部署，不阻塞响应
+    console.log('🚀 开始异步执行部署...')
+
+    // 立即返回响应，部署在后台执行
+    const deploymentPromise = deploymentExecutionService.triggerDeployment(deploymentId)
+
+    // 不等待部署完成，立即返回
+    setImmediate(async () => {
+      try {
+        const success = await deploymentPromise
+        console.log(`${success ? '✅' : '❌'} 自动部署执行${success ? '成功' : '失败'}: ${deploymentId}`)
+      } catch (error) {
+        console.error('❌ 自动部署执行异常:', error)
       }
     })
-
-    console.log('✅ 部署状态已更新为部署中')
-
-    // 异步执行真实部署，不阻塞响应
-    setTimeout(async () => {
-      try {
-        console.log('🚀 开始执行真实部署:', deploymentId)
-
-        // 执行简化部署
-        const deploymentConfig = {
-          id: deploymentId,
-          name: deployment.name,
-          deployScript: deployment.project.deployScript || '',
-          serverId: deployment.project.serverId || undefined
-        }
-
-        const executor = new SimplifiedDeploymentExecutor(deploymentId, deploymentConfig)
-        const deploymentResult = await executor.execute()
-
-        const prisma = await getPrismaClient()
-
-        // 更新部署结果 - 使用upsert确保记录存在
-        await prisma.deployment.upsert({
-          where: { id: deploymentId },
-          update: {
-            status: deploymentResult.success ? 'success' : 'failed',
-            completedAt: new Date(),
-            duration: deploymentResult.duration,
-            logs: deploymentResult.logs
-          },
-          create: {
-            id: deploymentId,
-            projectId: deployment.projectId,
-            name: deployment.name,
-            description: deployment.description,
-            environment: deployment.environment,
-            version: deployment.version,
-            status: deploymentResult.success ? 'success' : 'failed',
-            completedAt: new Date(),
-            duration: deploymentResult.duration,
-            logs: deploymentResult.logs,
-            userId: deployment.userId,
-            deployScript: deployment.deployScript,
-            rollbackScript: deployment.rollbackScript
-          }
-        })
-
-        console.log(`✅ 简化部署${deploymentResult.success ? '成功' : '失败'}:`, deploymentId)
-
-        if (!deploymentResult.success) {
-          console.error('❌ 部署失败，详细日志:', deploymentResult.logs)
-        }
-
-      } catch (error) {
-        console.error('❌ 部署执行异常:', error)
-
-        try {
-          const prisma = await getPrismaClient()
-
-          // 更新为失败状态 - 使用upsert确保记录存在
-          await prisma.deployment.upsert({
-            where: { id: deploymentId },
-            update: {
-              status: 'failed',
-              completedAt: new Date(),
-              duration: 0,
-              logs: (deployment.logs || '') + '\n❌ 部署执行异常: ' +
-                (error instanceof Error ? error.message : '未知错误')
-            },
-            create: {
-              id: deploymentId,
-              projectId: deployment.projectId,
-              name: deployment.name,
-              description: deployment.description,
-              environment: deployment.environment,
-              version: deployment.version,
-              status: 'failed',
-              completedAt: new Date(),
-              duration: 0,
-              logs: '❌ 部署执行异常: ' + (error instanceof Error ? error.message : '未知错误'),
-              userId: deployment.userId,
-              deployScript: deployment.deployScript,
-              rollbackScript: deployment.rollbackScript
-            }
-          })
-        } catch (updateError) {
-          console.error('❌ 更新失败状态失败:', updateError)
-        }
-      }
-    }, 1000) // 1秒后开始执行
 
     return NextResponse.json({
       success: true,
-      message: '部署已开始',
-      data: updatedDeployment
+      data: {
+        deploymentId,
+        status: 'deploying',
+        startedAt: new Date().toISOString(),
+        message: '部署已开始执行'
+      },
+      message: '部署启动成功，正在后台执行'
     })
 
   } catch (error) {
-    console.error('❌ 开始部署失败:', error)
+    console.error('❌ 启动部署失败:', error)
     return NextResponse.json({
       success: false,
-      error: '开始部署失败'
+      error: '启动部署失败'
     }, { status: 500 })
   }
 }

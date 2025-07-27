@@ -3,7 +3,7 @@ import { requireAuth } from '../../../../lib/auth/apiHelpers-new'
 import { getPrismaClient } from '../../../../lib/config/database'
 import { z } from 'zod'
 
-// CI/CD项目验证schema
+// CI项目验证schema - 只保留CI相关字段
 const CICDProjectSchema = z.object({
   name: z.string().min(1, '项目名称不能为空').max(100, '项目名称过长'),
   description: z.string().optional(),
@@ -11,9 +11,21 @@ const CICDProjectSchema = z.object({
   repositoryType: z.string().default('git'),
   branch: z.string().default('main'),
   buildScript: z.string().optional(),
-  deployScript: z.string().optional(),
+  testScript: z.string().optional(),
   environment: z.enum(['dev', 'test', 'prod']).default('dev'),
-  serverId: z.string().optional()
+  gitCredentialId: z.string().optional(), // Git认证配置ID
+  notificationUsers: z.array(z.string()).optional(),
+  buildTriggers: z.object({
+    onPush: z.boolean().default(true),
+    onPullRequest: z.boolean().default(false),
+    onSchedule: z.boolean().default(false),
+    scheduleExpression: z.string().optional()
+  }).optional(),
+  buildTimeout: z.number().min(1).max(480).optional(), // 1-480分钟
+  tags: z.array(z.string()).optional(),
+  environmentVariables: z.record(z.string()).optional(),
+  requireApproval: z.boolean().optional().default(false),
+  approvalUsers: z.array(z.string()).optional()
 })
 
 // 获取CI/CD项目列表
@@ -33,6 +45,12 @@ export async function GET(request: NextRequest) {
 
     const prisma = await getPrismaClient()
 
+    // 设置请求超时控制
+    const requestTimeout = 15000 // 15秒超时
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('数据库查询超时')), requestTimeout)
+    })
+
     // 构建查询条件
     const where: any = {
       userId: user.id
@@ -49,24 +67,27 @@ export async function GET(request: NextRequest) {
       where.environment = environment
     }
 
-    // 查询项目列表
-    const [projects, total] = await Promise.all([
-      prisma.cICDProject.findMany({
-        where,
-        include: {
-          _count: {
-            select: {
-              deployments: true,
-              pipelines: true
+    // 查询项目列表，添加超时控制
+    const [projects, total] = await Promise.race([
+      Promise.all([
+        prisma.cICDProject.findMany({
+          where,
+          include: {
+            _count: {
+              select: {
+                deployments: true,
+                pipelines: true
+              }
             }
-          }
-        },
-        orderBy: { updatedAt: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit
-      }),
-      prisma.cICDProject.count({ where })
-    ])
+          },
+          orderBy: { updatedAt: 'desc' },
+          skip: (page - 1) * limit,
+          take: limit
+        }),
+        prisma.cICDProject.count({ where })
+      ]),
+      timeoutPromise
+    ]) as any
 
     console.log(`✅ 获取CI/CD项目列表成功，共 ${projects.length} 个项目`)
 

@@ -106,12 +106,21 @@ export async function PUT(
       return errorResponse('您没有权限更新此项目', undefined, 403)
     }
 
-    // 构建更新数据
+    // 构建更新数据 - 包含所有可更新字段
     const updatePayload: any = {}
     if (updateData.name !== undefined) updatePayload.name = updateData.name
     if (updateData.description !== undefined) updatePayload.description = updateData.description
     if (updateData.repositoryUrl !== undefined) updatePayload.repositoryUrl = updateData.repositoryUrl
     if (updateData.branch !== undefined) updatePayload.branch = updateData.branch
+    if (updateData.buildScript !== undefined) updatePayload.buildScript = updateData.buildScript
+    if (updateData.environment !== undefined) updatePayload.environment = updateData.environment
+    if (updateData.buildTriggers !== undefined) updatePayload.buildTriggers = updateData.buildTriggers
+    if (updateData.buildTimeout !== undefined) updatePayload.buildTimeout = updateData.buildTimeout
+    if (updateData.tags !== undefined) updatePayload.tags = updateData.tags
+    if (updateData.environmentVariables !== undefined) updatePayload.environmentVariables = updateData.environmentVariables
+    if (updateData.notificationUsers !== undefined) updatePayload.notificationUsers = updateData.notificationUsers
+    if (updateData.requireApproval !== undefined) updatePayload.requireApproval = updateData.requireApproval
+    if (updateData.approvalUsers !== undefined) updatePayload.approvalUsers = updateData.approvalUsers
     if (updateData.isActive !== undefined) updatePayload.isActive = updateData.isActive
 
     // 更新项目
@@ -133,7 +142,17 @@ export async function PUT(
         name: updatedProject.name,
         description: updatedProject.description,
         repositoryUrl: updatedProject.repositoryUrl,
+        repositoryType: updatedProject.repositoryType,
         branch: updatedProject.branch,
+        buildScript: updatedProject.buildScript,
+        environment: updatedProject.environment,
+        buildTriggers: updatedProject.buildTriggers,
+        buildTimeout: updatedProject.buildTimeout,
+        tags: updatedProject.tags,
+        environmentVariables: updatedProject.environmentVariables,
+        notificationUsers: updatedProject.notificationUsers,
+        requireApproval: updatedProject.requireApproval,
+        approvalUsers: updatedProject.approvalUsers,
         userId: updatedProject.userId,
         isActive: updatedProject.isActive,
         createdAt: updatedProject.createdAt,

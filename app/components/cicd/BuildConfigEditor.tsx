@@ -12,7 +12,9 @@ import {
   Alert,
   Tooltip,
   Tag,
-  Collapse
+  Collapse,
+  Checkbox,
+  InputNumber
 } from 'antd'
 import {
   CodeOutlined,
@@ -22,14 +24,14 @@ import {
   CopyOutlined,
   SettingOutlined
 } from '@ant-design/icons'
-import BuildTemplateManager from './BuildTemplateManager'
+
 import {
   ProjectTemplate,
   RepositoryInfo,
   ProjectDetectionResult
 } from '../../types/project-template'
 import { ServerInfo } from '../../types/server'
-import HostSelector from './HostSelector'
+
 
 const { TextArea } = Input
 const { Text, Title } = Typography
@@ -52,9 +54,7 @@ const BuildConfigEditor: React.FC<BuildConfigEditorProps> = ({
   onServerSelect
 }) => {
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [templateManagerVisible, setTemplateManagerVisible] = useState(false)
 
-  // 预设的构建脚本模板
   const buildScriptTemplates = {
     'npm': {
       build: 'npm install && npm run build',
@@ -93,35 +93,29 @@ const BuildConfigEditor: React.FC<BuildConfigEditorProps> = ({
     }
   }
 
-  // 根据检测结果或模板自动填充配置
   useEffect(() => {
     if (template && !form.getFieldValue('buildScript')) {
       form.setFieldsValue({
         buildScript: template.defaultConfig.buildScript,
-        deployScript: template.defaultConfig.deployScript,
         environment: template.defaultConfig.environment
       })
     }
   }, [template, form])
 
-  // 应用预设脚本
   const applyTemplate = (packageManager: string) => {
     const scripts = buildScriptTemplates[packageManager as keyof typeof buildScriptTemplates]
     if (scripts) {
       form.setFieldsValue({
-        buildScript: scripts.build,
-        deployScript: scripts.deploy
+        buildScript: scripts.build
       })
     }
   }
 
-  // 渲染智能建议
   const renderSuggestions = () => {
     if (!detection && !repositoryInfo) return null
 
     const suggestions = []
 
-    // 基于检测结果的建议
     if (detection?.packageManager) {
       suggestions.push({
         type: 'packageManager',
@@ -131,7 +125,6 @@ const BuildConfigEditor: React.FC<BuildConfigEditorProps> = ({
       })
     }
 
-    // Docker建议
     if (repositoryInfo?.hasDockerfile) {
       suggestions.push({
         type: 'docker',
@@ -141,7 +134,6 @@ const BuildConfigEditor: React.FC<BuildConfigEditorProps> = ({
       })
     }
 
-    // CI/CD建议
     if (repositoryInfo?.hasCI) {
       suggestions.push({
         type: 'ci',
@@ -189,49 +181,12 @@ const BuildConfigEditor: React.FC<BuildConfigEditorProps> = ({
     )
   }
 
-  // 渲染快速模板
-  const renderQuickTemplates = () => {
-    return (
-      <Card
-        size="small"
-        title="快速模板"
-        style={{ marginBottom: 16 }}
-        extra={
-          <Button
-            type="text"
-            size="small"
-            icon={<SettingOutlined />}
-            onClick={() => setTemplateManagerVisible(true)}
-          >
-            管理模板
-          </Button>
-        }
-      >
-        <Space wrap>
-          {Object.entries(buildScriptTemplates).map(([key, scripts]) => (
-            <Button
-              key={key}
-              size="small"
-              onClick={() => applyTemplate(key)}
-              icon={<CopyOutlined />}
-            >
-              {key.toUpperCase()}
-            </Button>
-          ))}
-        </Space>
-      </Card>
-    )
-  }
+
 
   return (
     <div className="build-config-editor">
-      {/* 智能建议 */}
       {renderSuggestions()}
 
-      {/* 快速模板 */}
-      {renderQuickTemplates()}
-
-      {/* 基本配置 */}
       <Card title="构建配置" style={{ marginBottom: 16 }}>
         <Form.Item
           name="buildScript"
@@ -252,24 +207,7 @@ const BuildConfigEditor: React.FC<BuildConfigEditorProps> = ({
           />
         </Form.Item>
 
-        <Form.Item
-          name="deployScript"
-          label={
-            <Space>
-              <RocketOutlined />
-              <span>部署脚本</span>
-              <Tooltip title="用于启动、部署项目的命令">
-                <InfoCircleOutlined style={{ color: '#999' }} />
-              </Tooltip>
-            </Space>
-          }
-          rules={[{ required: true, message: '请输入部署脚本' }]}
-        >
-          <TextArea
-            placeholder="输入部署命令，如: npm start"
-            rows={3}
-          />
-        </Form.Item>
+
 
         <Form.Item
           name="environment"
@@ -284,17 +222,7 @@ const BuildConfigEditor: React.FC<BuildConfigEditorProps> = ({
         </Form.Item>
       </Card>
 
-      {/* 主机选择 */}
-      <Card title="部署配置" style={{ marginBottom: 16 }}>
-        <HostSelector
-          form={form}
-          selectedServerId={form.getFieldValue('serverId')}
-          onServerSelect={onServerSelect}
-        />
-      </Card>
-
-      {/* 高级配置 */}
-      <Collapse 
+      <Collapse
         ghost
         onChange={(keys) => setShowAdvanced(keys.length > 0)}
       >
@@ -341,14 +269,81 @@ const BuildConfigEditor: React.FC<BuildConfigEditorProps> = ({
         </Panel>
       </Collapse>
 
-      {/* 帮助信息 */}
+      <Card title="构建触发器" style={{ marginTop: 16, marginBottom: 16 }}>
+        <Alert
+          message="构建触发器配置"
+          description="配置何时自动触发构建任务，支持代码推送、Pull Request和定时触发。"
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+
+        <Form.Item name={['buildTriggers', 'onPush']} valuePropName="checked" initialValue={true}>
+          <Checkbox>
+            <Space>
+              <span>代码推送时自动构建</span>
+              <Tooltip title="当代码推送到指定分支时自动触发构建">
+                <InfoCircleOutlined style={{ color: '#999' }} />
+              </Tooltip>
+            </Space>
+          </Checkbox>
+        </Form.Item>
+
+        <Form.Item name={['buildTriggers', 'onPullRequest']} valuePropName="checked" initialValue={false}>
+          <Checkbox>
+            <Space>
+              <span>Pull Request时自动构建</span>
+              <Tooltip title="当创建或更新Pull Request时自动触发构建">
+                <InfoCircleOutlined style={{ color: '#999' }} />
+              </Tooltip>
+            </Space>
+          </Checkbox>
+        </Form.Item>
+
+        <Form.Item name={['buildTriggers', 'onSchedule']} valuePropName="checked" initialValue={false}>
+          <Checkbox>
+            <Space>
+              <span>定时构建</span>
+              <Tooltip title="按照设定的时间表定时触发构建">
+                <InfoCircleOutlined style={{ color: '#999' }} />
+              </Tooltip>
+            </Space>
+          </Checkbox>
+        </Form.Item>
+
+        <Form.Item
+          label="定时表达式"
+          name={['buildTriggers', 'scheduleExpression']}
+          tooltip="使用Cron表达式，例如：0 2 * * * (每天凌晨2点)"
+        >
+          <Input
+            placeholder="0 2 * * *"
+            addonBefore="Cron:"
+          />
+        </Form.Item>
+
+        <Form.Item
+          label="构建超时"
+          name="buildTimeout"
+          tooltip="构建任务的最大执行时间，超时后将自动终止"
+          initialValue={30}
+        >
+          <InputNumber
+            min={1}
+            max={480}
+            addonAfter="分钟"
+            style={{ width: 150 }}
+          />
+        </Form.Item>
+      </Card>
+
       <Alert
         message="配置说明"
         description={
           <div>
             <p>• <strong>构建脚本</strong>：用于编译、打包项目的命令序列</p>
-            <p>• <strong>部署脚本</strong>：用于启动、部署项目的命令序列</p>
-            <p>• <strong>环境变量</strong>：构建和部署过程中需要的环境变量</p>
+            <p>• <strong>测试脚本</strong>：用于运行项目测试的命令序列（可选）</p>
+            <p>• <strong>环境变量</strong>：构建和测试过程中需要的环境变量</p>
             <p>• 多个命令可以用 <code>&&</code> 连接，如：<code>npm install && npm run build</code></p>
           </div>
         }
@@ -357,11 +352,7 @@ const BuildConfigEditor: React.FC<BuildConfigEditorProps> = ({
         style={{ marginTop: 16 }}
       />
 
-      {/* 构建模板管理器 */}
-      <BuildTemplateManager
-        visible={templateManagerVisible}
-        onCancel={() => setTemplateManagerVisible(false)}
-      />
+
     </div>
   )
 }

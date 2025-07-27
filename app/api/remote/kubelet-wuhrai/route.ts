@@ -30,7 +30,8 @@ function buildKubeletWuhraiCommand(
   message: string,
   apiKey?: string,
   baseUrl?: string,
-  systemPrompt?: string
+  systemPrompt?: string,
+  isK8sMode?: boolean
 ): { command: string; envVars: Record<string, string> } {
   const envMapping = PROVIDER_ENV_MAP[provider as keyof typeof PROVIDER_ENV_MAP]
   const providerParam = PROVIDER_PARAM_MAP[provider as keyof typeof PROVIDER_PARAM_MAP]
@@ -105,7 +106,8 @@ export async function POST(request: NextRequest) {
       provider = 'openai-compatible',
       apiKey,
       baseUrl,
-      systemPrompt
+      systemPrompt,
+      isK8sMode = false
     } = body
 
     console.log('📥 [远程Kubelet API] 接收到请求:', {
@@ -115,7 +117,8 @@ export async function POST(request: NextRequest) {
       provider,
       messageLength: message?.length || 0,
       hasApiKey: !!apiKey,
-      hasBaseUrl: !!baseUrl
+      hasBaseUrl: !!baseUrl,
+      isK8sMode: isK8sMode
     })
 
     // 验证必需参数
@@ -167,7 +170,8 @@ export async function POST(request: NextRequest) {
       message,
       apiKey,
       baseUrl,
-      systemPrompt
+      systemPrompt,
+      isK8sMode
     )
 
     console.log('🔧 [远程Kubelet API] 构建命令详情:', {

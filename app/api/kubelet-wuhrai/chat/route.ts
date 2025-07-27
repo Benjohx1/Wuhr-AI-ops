@@ -205,15 +205,50 @@ Please provide responses in Chinese and include practical command examples when 
       child.on('close', (code) => {
         const executionTime = Date.now() - startTime
 
-        if (code === 0 && stdout.trim()) {
+        // 完全清理ANSI转义序列和控制字符
+        const cleanOutput = (text: string) => {
+          return text
+            // 移除所有ANSI转义序列
+            .replace(/\x1b\[[0-9;]*[mGKHfABCDsuJnpqr]/g, '') // 标准ANSI序列
+            .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '') // 其他ANSI序列
+            .replace(/\x1b\[[\d;]*[A-Za-z]/g, '') // 数字参数ANSI序列
+            .replace(/\x1b\[[?]?[0-9;]*[hlc]/g, '') // 私有模式序列
+            .replace(/\x1b\]/g, '') // OSC序列开始
+            .replace(/\x1b\\/g, '') // OSC序列结束
+            .replace(/\x1b[()][AB012]/g, '') // 字符集选择
+            .replace(/\x1b[=>]/g, '') // 键盘模式
+            .replace(/\x1b[78]/g, '') // 保存/恢复光标
+            .replace(/\x1b[DEHMN]/g, '') // 其他控制序列
+            .replace(/\x1b\[[\d;]*[~]/g, '') // 功能键序列
+            .replace(/\x1b\[[0-9;]*[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/g, '') // 所有大写字母结尾的序列
+            .replace(/\x1b\[[0-9;]*[abcdefghijklmnopqrstuvwxyz]/g, '') // 所有小写字母结尾的序列
+            // 移除其他控制字符
+            .replace(/\x07/g, '') // 响铃
+            .replace(/\x08/g, '') // 退格
+            .replace(/\x0c/g, '') // 换页
+            .replace(/\x0e/g, '') // 移位输出
+            .replace(/\x0f/g, '') // 移位输入
+            .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '') // 其他控制字符
+            // 统一换行符和清理空白
+            .replace(/\r\n/g, '\n') // 统一换行符
+            .replace(/\r/g, '\n') // 统一换行符
+            .replace(/\n\s*\n\s*\n/g, '\n\n') // 移除多余空行，保留双换行
+            .replace(/^\s+|\s+$/g, '') // 移除首尾空白
+            .replace(/[ \t]+/g, ' ') // 合并多个空格和制表符
+        }
+
+        const cleanStdout = cleanOutput(stdout)
+        const cleanStderr = cleanOutput(stderr)
+
+        if (code === 0 && cleanStdout) {
           console.log('✅ kubelet-wuhrai 执行成功:', {
             executionTime: `${executionTime}ms`,
-            outputLength: stdout.length
+            outputLength: cleanStdout.length
           })
 
           resolve({
             success: true,
-            response: stdout.trim(),
+            response: cleanStdout,
             executionTime,
             timestamp: new Date().toISOString(),
             status: 'completed',
@@ -228,13 +263,13 @@ Please provide responses in Chinese and include practical command examples when 
         } else {
           console.error('❌ kubelet-wuhrai 执行失败:', {
             code,
-            stderr: stderr.substring(0, 500),
-            stdout: stdout.substring(0, 500)
+            stderr: cleanStderr.substring(0, 500),
+            stdout: cleanStdout.substring(0, 500)
           })
 
           resolve({
             success: false,
-            error: stderr || stdout || `命令执行失败，退出码: ${code}`,
+            error: cleanStderr || cleanStdout || `命令执行失败，退出码: ${code}`,
             executionTime,
             timestamp: new Date().toISOString(),
             status: 'error'
@@ -383,9 +418,43 @@ export async function POST(request: NextRequest) {
           throw new Error(result.stderr || '远程命令执行失败')
         }
 
+        // 完全清理ANSI转义序列和控制字符
+        const cleanOutput = (text: string) => {
+          return text
+            // 移除所有ANSI转义序列
+            .replace(/\x1b\[[0-9;]*[mGKHfABCDsuJnpqr]/g, '') // 标准ANSI序列
+            .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '') // 其他ANSI序列
+            .replace(/\x1b\[[\d;]*[A-Za-z]/g, '') // 数字参数ANSI序列
+            .replace(/\x1b\[[?]?[0-9;]*[hlc]/g, '') // 私有模式序列
+            .replace(/\x1b\]/g, '') // OSC序列开始
+            .replace(/\x1b\\/g, '') // OSC序列结束
+            .replace(/\x1b[()][AB012]/g, '') // 字符集选择
+            .replace(/\x1b[=>]/g, '') // 键盘模式
+            .replace(/\x1b[78]/g, '') // 保存/恢复光标
+            .replace(/\x1b[DEHMN]/g, '') // 其他控制序列
+            .replace(/\x1b\[[\d;]*[~]/g, '') // 功能键序列
+            .replace(/\x1b\[[0-9;]*[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/g, '') // 所有大写字母结尾的序列
+            .replace(/\x1b\[[0-9;]*[abcdefghijklmnopqrstuvwxyz]/g, '') // 所有小写字母结尾的序列
+            // 移除其他控制字符
+            .replace(/\x07/g, '') // 响铃
+            .replace(/\x08/g, '') // 退格
+            .replace(/\x0c/g, '') // 换页
+            .replace(/\x0e/g, '') // 移位输出
+            .replace(/\x0f/g, '') // 移位输入
+            .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '') // 其他控制字符
+            // 统一换行符和清理空白
+            .replace(/\r\n/g, '\n') // 统一换行符
+            .replace(/\r/g, '\n') // 统一换行符
+            .replace(/\n\s*\n\s*\n/g, '\n\n') // 移除多余空行，保留双换行
+            .replace(/^\s+|\s+$/g, '') // 移除首尾空白
+            .replace(/[ \t]+/g, ' ') // 合并多个空格和制表符
+        }
+
+        const cleanResponse = cleanOutput(result.stdout || '命令执行完成，但没有返回内容')
+
         return NextResponse.json({
           success: true,
-          response: result.stdout || '命令执行完成，但没有返回内容',
+          response: cleanResponse,
           model: body.model,
           executionMode: 'remote',
           hostId: hostId,

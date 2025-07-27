@@ -7,12 +7,14 @@ import { GitCredentialService } from '../git/gitCredentialService'
 
 export interface DeploymentConfig {
   deploymentId: string
-  hostId: string
+  hostId?: string // 单个主机ID（向后兼容）
+  deploymentHosts?: string[] // 多个主机ID列表
   buildScript?: string
   deployScript?: string
   workingDirectory?: string
   environment?: Record<string, string>
   timeout?: number
+  stopOnFirstFailure?: boolean // 是否在第一个主机失败时停止
   // Git配置
   repositoryUrl?: string
   branch?: string
@@ -113,16 +115,18 @@ export class DeploymentExecutor {
       // 阶段4: 远程部署
       this.log('📋 检查部署配置...')
       this.log(`🔧 部署脚本: ${config.deployScript ? '已配置' : '未配置'}`)
-      this.log(`🎯 目标主机: ${config.hostId}`)
-      this.log(`🏠 使用远程项目模式: ${config.useRemoteProject ? '是' : '否'}`)
-      if (config.useRemoteProject && config.remoteProjectPath) {
-        this.log(`📂 远程项目路径: ${config.remoteProjectPath}`)
-      }
 
-      if (config.deployScript) {
-        this.log('🚀 开始远程部署阶段...')
-        await this.deployRemotely(config)
-        this.log('✅ 远程部署阶段完成')
+      // 支持多主机部署
+      const hostIds = config.deploymentHosts || (config.hostId ? [config.hostId] : [])
+      this.log(`🎯 目标主机数量: ${hostIds.length}`)
+
+      if (hostIds.length === 0) {
+        this.log('⚠️ 未配置部署主机，跳过部署阶段')
+        this.log('💡 提示：请选择至少一个部署主机')
+      } else if (config.deployScript) {
+        this.log('🚀 开始多主机部署阶段...')
+        await this.deployToMultipleHosts(config, hostIds)
+        this.log('✅ 多主机部署阶段完成')
       } else {
         this.log('⚠️ 未配置部署脚本，跳过部署阶段')
         this.log('💡 提示：请在项目配置中添加部署脚本以启用自动部署')
@@ -167,24 +171,44 @@ export class DeploymentExecutor {
     this.log('📁 准备工作目录...')
 
     try {
+      // 如果工作目录已存在，先清理旧的代码目录
+      if (fs.existsSync(this.workingDir)) {
+        this.log('🧹 发现已存在的工作目录，清理旧代码...')
+        if (fs.existsSync(this.codeDir)) {
+          await this.safeRemoveDirectory(this.codeDir)
+          this.log('✅ 旧代码目录清理完成')
+        }
+      }
+
       // 创建工作目录
       if (!fs.existsSync(this.workingDir)) {
         fs.mkdirSync(this.workingDir, { recursive: true })
+        this.log(`📂 创建工作目录: ${this.workingDir}`)
       }
 
-      // 创建代码目录
+      // 创建全新的代码目录
       if (!fs.existsSync(this.codeDir)) {
         fs.mkdirSync(this.codeDir, { recursive: true })
+        this.log(`📂 创建代码目录: ${this.codeDir}`)
+      }
+
+      // 创建日志目录
+      const logDir = path.join(this.workingDir, 'logs')
+      if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true })
+        this.log(`📂 创建日志目录: ${logDir}`)
       }
 
       this.log(`✅ 工作目录准备完成: ${this.workingDir}`)
+      this.log(`   - 代码目录: ${this.codeDir}`)
+      this.log(`   - 日志目录: ${logDir}`)
     } catch (error) {
       throw new Error(`工作目录准备失败: ${error instanceof Error ? error.message : '未知错误'}`)
     }
   }
 
   /**
-   * 从Git仓库拉取代码（支持增量更新）
+   * 从Git仓库拉取代码（全新克隆）
    */
   private async pullCode(config: DeploymentConfig): Promise<void> {
     this.log('📥 开始拉取代码...')
@@ -205,75 +229,55 @@ export class DeploymentExecutor {
       // 构建Git命令
       const gitUrl = this.buildGitUrl(config.repositoryUrl, config.gitCredentials)
 
-      // 检查代码目录是否已存在
+      // 执行全新克隆
+      this.log('📦 执行全新代码克隆...')
+
+      // 先检查目标目录状态
       if (fs.existsSync(this.codeDir)) {
-        this.log('📂 发现已存在的代码目录，尝试增量更新...')
+        this.log(`⚠️ 发现目标目录已存在: ${this.codeDir}`)
+        const dirContents = fs.readdirSync(this.codeDir)
+        this.log(`📁 目录内容: ${dirContents.length > 0 ? dirContents.join(', ') : '空目录'}`)
 
-        try {
-          // 检查是否是Git仓库
-          await this.executeCommand('git', ['status', '--porcelain'], this.codeDir)
+        // 强制清理目录
+        this.log('🧹 强制清理目标目录...')
+        await this.forceRemoveDirectory(this.codeDir)
+        this.log('✅ 目录清理完成')
+      }
 
-          // 获取当前远程URL
-          const currentRemote = await this.executeCommand('git', ['remote', 'get-url', 'origin'], this.codeDir)
-
-          // 如果远程URL不同，更新远程URL而不是删除目录
-          if (currentRemote.trim() !== gitUrl.trim()) {
-            this.log('🔄 远程仓库地址已变更，更新远程URL...')
-            await this.executeCommand('git', ['remote', 'set-url', 'origin', gitUrl], this.codeDir)
-          }
-
-          // 获取当前分支
-          const currentBranch = await this.executeCommand('git', ['branch', '--show-current'], this.codeDir)
-          this.log(`🌿 当前分支: ${currentBranch.trim()}`)
-
-          // 如果分支不同，切换分支
-          if (currentBranch.trim() !== branch) {
-            this.log(`🔄 切换到目标分支: ${branch}`)
-            await this.executeCommand('git', ['fetch', 'origin', branch], this.codeDir)
-            await this.executeCommand('git', ['checkout', '-B', branch, `origin/${branch}`], this.codeDir)
-          } else {
-            // 增量更新
-            this.log('🔄 执行增量更新...')
-
-            // 先清理工作区
-            await this.executeCommand('git', ['reset', '--hard', 'HEAD'], this.codeDir)
-            await this.executeCommand('git', ['clean', '-fd'], this.codeDir)
-
-            // 获取最新代码
-            await this.executeCommand('git', ['fetch', 'origin', branch], this.codeDir)
-            await this.executeCommand('git', ['reset', '--hard', `origin/${branch}`], this.codeDir)
-          }
-        } catch (error) {
-          this.log(`⚠️ 增量更新失败: ${error instanceof Error ? error.message : '未知错误'}`)
-          this.log('🔄 尝试强制重置代码目录...')
-
-          try {
-            // 先尝试强制重置，保留目录结构以便下次快速更新
-            this.log('🔧 执行强制重置...')
-            await this.executeCommand('git', ['reset', '--hard', 'HEAD'], this.codeDir)
-            await this.executeCommand('git', ['clean', '-fdx'], this.codeDir)
-            await this.executeCommand('git', ['fetch', 'origin', branch, '--force'], this.codeDir)
-            await this.executeCommand('git', ['reset', '--hard', `origin/${branch}`], this.codeDir)
-            this.log('✅ 代码重置成功，目录结构已保留')
-          } catch (resetError) {
-            this.log('⚠️ 代码重置失败，重新克隆仓库...')
-            // 只有在重置失败时才删除目录重新克隆
-            await this.safeRemoveDirectory(this.codeDir)
-
-            try {
-              await this.cloneRepository(gitUrl, branch)
-            } catch (cloneError) {
-              // 如果克隆也失败，尝试无认证访问
-              this.log('❌ 认证克隆失败，尝试无认证访问...')
-              await this.safeRemoveDirectory(this.codeDir)
-              await this.cloneRepository(config.repositoryUrl!, branch)
-            }
-          }
-        }
-      } else {
-        // 首次克隆
-        this.log('📦 首次克隆仓库...')
+      try {
         await this.cloneRepository(gitUrl, branch)
+      } catch (cloneError) {
+        this.log('❌ 认证克隆失败，分析错误原因...')
+        this.log(`🔍 克隆错误详情: ${cloneError instanceof Error ? cloneError.message : '未知错误'}`)
+
+        // 检查是否是认证问题
+        const errorMsg = cloneError instanceof Error ? cloneError.message : ''
+        if (errorMsg.includes('Authentication failed') ||
+            errorMsg.includes('Permission denied') ||
+            errorMsg.includes('access denied') ||
+            errorMsg.includes('401') ||
+            errorMsg.includes('403')) {
+          this.log('🔐 检测到认证问题，尝试无认证访问...')
+
+          // 再次强制清理目录
+          await this.forceRemoveDirectory(this.codeDir)
+          this.log('🧹 重新清理目录完成，准备无认证克隆...')
+
+          // 使用原始仓库URL（无认证信息）
+          await this.cloneRepository(config.repositoryUrl!, branch)
+        } else if (errorMsg.includes('already exists and is not an empty directory')) {
+          this.log('📁 目录冲突问题，执行深度清理...')
+
+          // 执行更彻底的清理
+          await this.deepCleanDirectory(this.codeDir)
+          this.log('🧹 深度清理完成，重新尝试克隆...')
+
+          // 重新尝试认证克隆
+          await this.cloneRepository(gitUrl, branch)
+        } else {
+          // 其他错误，直接抛出
+          throw cloneError
+        }
       }
 
       this.log('✅ 代码拉取完成')
@@ -344,7 +348,73 @@ export class DeploymentExecutor {
   }
 
   /**
-   * 远程部署
+   * 部署到多个主机
+   */
+  private async deployToMultipleHosts(config: DeploymentConfig, hostIds: string[]): Promise<void> {
+    this.log(`🎯 开始部署到 ${hostIds.length} 个主机...`)
+
+    const deploymentResults = []
+
+    for (let i = 0; i < hostIds.length; i++) {
+      const hostId = hostIds[i]
+      this.log(`\n=== 部署到主机 ${i + 1}/${hostIds.length}: ${hostId} ===`)
+
+      try {
+        // 为每个主机创建独立的配置
+        const hostConfig = { ...config, hostId }
+        await this.deployRemotely(hostConfig)
+
+        deploymentResults.push({
+          hostId,
+          success: true,
+          message: '部署成功'
+        })
+
+        this.log(`✅ 主机 ${hostId} 部署成功`)
+
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : '未知错误'
+        deploymentResults.push({
+          hostId,
+          success: false,
+          message: errorMessage
+        })
+
+        this.log(`❌ 主机 ${hostId} 部署失败: ${errorMessage}`)
+
+        // 根据配置决定是否继续部署其他主机
+        if (config.stopOnFirstFailure) {
+          this.log('⚠️ 配置为首次失败即停止，终止后续主机部署')
+          break
+        } else {
+          this.log('⚠️ 继续部署其他主机...')
+        }
+      }
+    }
+
+    // 汇总部署结果
+    const successCount = deploymentResults.filter(r => r.success).length
+    const failureCount = deploymentResults.filter(r => !r.success).length
+
+    this.log(`\n📊 多主机部署结果汇总:`)
+    this.log(`   ✅ 成功: ${successCount} 个主机`)
+    this.log(`   ❌ 失败: ${failureCount} 个主机`)
+
+    if (failureCount > 0) {
+      this.log(`\n❌ 失败的主机:`)
+      deploymentResults
+        .filter(r => !r.success)
+        .forEach(r => this.log(`   - ${r.hostId}: ${r.message}`))
+
+      // 如果有主机部署失败，抛出错误
+      throw new Error(`${failureCount} 个主机部署失败`)
+    }
+
+    this.log(`🎉 所有主机部署成功完成！`)
+  }
+
+  /**
+   * 远程部署（单个主机）
    */
   private async deployRemotely(config: DeploymentConfig): Promise<void> {
     this.log('🚀 开始远程部署...')
@@ -352,7 +422,7 @@ export class DeploymentExecutor {
     try {
       // 获取主机信息
       this.log('📡 获取主机配置信息...')
-      this.hostInfo = await this.getHostInfo(config.hostId)
+      this.hostInfo = await this.getHostInfo(config.hostId || '')
       if (!this.hostInfo) {
         throw new Error(`主机配置不存在: ${config.hostId}`)
       }
@@ -456,7 +526,7 @@ export class DeploymentExecutor {
           username: true,
           password: true,
           keyPath: true,
-
+          authType: true, // 添加认证类型字段
           os: true,
           status: true
         }
@@ -465,8 +535,24 @@ export class DeploymentExecutor {
       if (host) {
         console.log('✅ 找到配置的主机:', {
           name: host.name,
-          ip: host.ip
+          ip: host.ip || host.hostname,
+          authType: host.authType
         })
+
+        // 确定实际的认证类型
+        let actualAuthType = host.authType
+        if (!actualAuthType) {
+          // 如果数据库中没有设置authType，根据其他字段推断
+          if (host.keyPath) {
+            actualAuthType = 'key'
+          } else if (host.password) {
+            actualAuthType = 'password'
+          } else {
+            actualAuthType = 'local'
+          }
+        }
+
+        console.log(`🔐 主机认证类型: ${actualAuthType}`)
 
         return {
           id: host.id,
@@ -476,7 +562,7 @@ export class DeploymentExecutor {
           username: host.username || 'deploy',
           password: host.password,
           keyPath: host.keyPath,
-          authType: host.keyPath ? 'key' : 'password'
+          authType: actualAuthType
         }
       } else {
         console.log('⚠️ 未找到主机配置，使用本地主机:', hostId)
@@ -946,48 +1032,95 @@ export class DeploymentExecutor {
    * 执行远程命令
    */
   private async executeRemoteCommand(command: string): Promise<string> {
-    // 检查是否有密码，如果有则使用sshpass
-    if (this.hostInfo.password && !this.hostInfo.keyPath) {
-      this.log('🔐 使用密码认证执行远程命令')
+    this.log(`📡 准备执行远程命令: ${this.hostInfo.username}@${this.hostInfo.host}:${this.hostInfo.port}`)
+    this.log(`🔐 认证方式: ${this.hostInfo.authType}`)
 
-      const sshpassArgs = [
-        '-p', this.hostInfo.password,
-        'ssh',
-        '-o', 'StrictHostKeyChecking=no',
-        '-o', 'UserKnownHostsFile=/dev/null',
-        '-o', 'LogLevel=ERROR'
-      ]
+    try {
+      // 检查认证方式并执行相应的SSH命令
+      if (this.hostInfo.authType === 'password' && this.hostInfo.password) {
+        this.log('🔐 使用密码认证执行远程命令')
 
-      if (this.hostInfo.port && this.hostInfo.port !== 22) {
-        sshpassArgs.push('-p', this.hostInfo.port.toString())
+        const sshpassArgs = [
+          '-p', this.hostInfo.password,
+          'ssh',
+          '-o', 'StrictHostKeyChecking=no',
+          '-o', 'UserKnownHostsFile=/dev/null',
+          '-o', 'LogLevel=ERROR',
+          '-o', 'ConnectTimeout=30'
+        ]
+
+        if (this.hostInfo.port && this.hostInfo.port !== 22) {
+          sshpassArgs.push('-p', this.hostInfo.port.toString())
+        }
+
+        sshpassArgs.push(`${this.hostInfo.username}@${this.hostInfo.host}`)
+        sshpassArgs.push(command)
+
+        this.log(`🔧 SSH命令: sshpass [密码隐藏] ssh ${this.hostInfo.username}@${this.hostInfo.host}`)
+        const result = await this.executeCommand('sshpass', sshpassArgs, this.workingDir)
+        this.log('✅ 密码认证远程命令执行成功')
+        return result
+
+      } else if (this.hostInfo.authType === 'key' && this.hostInfo.keyPath) {
+        this.log('🔑 使用密钥认证执行远程命令')
+
+        const sshArgs = [
+          '-o', 'StrictHostKeyChecking=no',
+          '-o', 'UserKnownHostsFile=/dev/null',
+          '-o', 'LogLevel=ERROR',
+          '-o', 'ConnectTimeout=30'
+        ]
+
+        if (this.hostInfo.port && this.hostInfo.port !== 22) {
+          sshArgs.push('-p', this.hostInfo.port.toString())
+        }
+
+        if (this.hostInfo.keyPath) {
+          sshArgs.push('-i', this.hostInfo.keyPath)
+          this.log(`🔑 使用密钥文件: ${this.hostInfo.keyPath}`)
+        }
+
+        sshArgs.push(`${this.hostInfo.username}@${this.hostInfo.host}`)
+        sshArgs.push(command)
+
+        this.log(`🔧 SSH命令: ssh -i ${this.hostInfo.keyPath} ${this.hostInfo.username}@${this.hostInfo.host}`)
+        const result = await this.executeCommand('ssh', sshArgs, this.workingDir)
+        this.log('✅ 密钥认证远程命令执行成功')
+        return result
+
+      } else {
+        throw new Error(`不支持的认证方式: ${this.hostInfo.authType}，或缺少必要的认证信息`)
       }
 
-      sshpassArgs.push(`${this.hostInfo.username}@${this.hostInfo.host}`)
-      sshpassArgs.push(command)
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : '未知错误'
+      this.log(`❌ 远程命令执行失败: ${errorMsg}`)
 
-      return await this.executeCommand('sshpass', sshpassArgs, this.workingDir)
-    } else {
-      // 使用密钥认证或无密码认证
-      this.log('🔑 使用密钥认证执行远程命令')
-
-      const sshArgs = [
-        '-o', 'StrictHostKeyChecking=no',
-        '-o', 'UserKnownHostsFile=/dev/null',
-        '-o', 'LogLevel=ERROR'
-      ]
-
-      if (this.hostInfo.port && this.hostInfo.port !== 22) {
-        sshArgs.push('-p', this.hostInfo.port.toString())
+      // 提供详细的错误诊断
+      if (errorMsg.includes('Permission denied') || errorMsg.includes('Authentication failed')) {
+        this.log('🔍 SSH认证失败诊断:')
+        this.log(`   目标主机: ${this.hostInfo.host}:${this.hostInfo.port}`)
+        this.log(`   SSH用户: ${this.hostInfo.username}`)
+        this.log(`   认证类型: ${this.hostInfo.authType}`)
+        if (this.hostInfo.authType === 'key') {
+          this.log(`   密钥文件: ${this.hostInfo.keyPath}`)
+        }
+        this.log('💡 请检查:')
+        this.log('   1. SSH用户名和认证信息是否正确')
+        this.log('   2. 目标主机SSH服务是否正常运行')
+        this.log('   3. 用户是否有SSH登录权限')
+        this.log('   4. 网络连接是否正常')
+      } else if (errorMsg.includes('Connection refused') || errorMsg.includes('No route to host')) {
+        this.log('🔍 网络连接失败诊断:')
+        this.log(`   目标主机: ${this.hostInfo.host}:${this.hostInfo.port}`)
+        this.log('💡 请检查:')
+        this.log('   1. 主机IP地址和端口是否正确')
+        this.log('   2. 目标主机是否在线')
+        this.log('   3. 防火墙是否阻止了SSH连接')
+        this.log('   4. SSH服务是否在指定端口运行')
       }
 
-      if (this.hostInfo.keyPath) {
-        sshArgs.push('-i', this.hostInfo.keyPath)
-      }
-
-      sshArgs.push(`${this.hostInfo.username}@${this.hostInfo.host}`)
-      sshArgs.push(command)
-
-      return await this.executeCommand('ssh', sshArgs, this.workingDir)
+      throw error
     }
   }
 
@@ -997,40 +1130,79 @@ export class DeploymentExecutor {
   private async executeDeploymentScript(script: string, environment?: Record<string, string>): Promise<void> {
     this.log('🔧 准备执行部署脚本...')
 
-    if (this.hostInfo.authType === 'local') {
+    // 详细记录主机信息和执行决策
+    this.log(`🎯 主机信息详情:`)
+    this.log(`   主机名: ${this.hostInfo.name}`)
+    this.log(`   主机地址: ${this.hostInfo.host}`)
+    this.log(`   认证类型: ${this.hostInfo.authType}`)
+    this.log(`   SSH端口: ${this.hostInfo.port || 22}`)
+    this.log(`   SSH用户: ${this.hostInfo.username}`)
+
+    // 强制检查：只有明确标记为local的主机才在本地执行
+    const isLocalHost = this.hostInfo.authType === 'local' ||
+                       this.hostInfo.host === 'localhost' ||
+                       this.hostInfo.host === '127.0.0.1'
+
+    if (isLocalHost) {
       // 本地执行
-      this.log('💻 在本地主机执行部署脚本')
-      this.log(`📂 执行目录: ${this.codeDir}`)
+      this.log('💻 ===== 在本地主机执行部署脚本 =====')
+      this.log(`📂 本地执行目录: ${this.codeDir}`)
+      this.log(`🖥️ 本地主机名: ${require('os').hostname()}`)
 
       if (environment) {
-        this.log('🌍 设置环境变量:')
+        this.log('🌍 设置本地环境变量:')
         for (const [key, value] of Object.entries(environment)) {
           this.log(`   ${key}=${value}`)
         }
       }
 
-      await this.executeCommand('sh', ['-c', script], this.codeDir, environment)
+      // 添加执行位置确认到脚本中
+      const confirmScript = `echo "🎯 执行位置确认: $(hostname) - $(pwd)" && ${script}`
+      await this.executeCommand('sh', ['-c', confirmScript], this.codeDir, environment)
       this.log('✅ 本地部署脚本执行完成')
     } else {
       // 远程执行
-      this.log('🌐 在远程主机执行部署脚本')
+      this.log('🌐 ===== 在远程主机执行部署脚本 =====')
+      this.log(`📡 目标远程主机: ${this.hostInfo.host}:${this.hostInfo.port || 22}`)
+      this.log(`👤 SSH用户: ${this.hostInfo.username}`)
+
       const remoteDir = '/tmp/deployment-' + this.deploymentId
       this.log(`📂 远程执行目录: ${remoteDir}`)
 
-      let remoteScript = `cd ${remoteDir} && `
+      // 构建远程脚本，包含执行位置确认
+      let remoteScript = `echo "🌐 ===== 远程主机执行开始 ====="
+echo "🎯 执行主机: $(hostname)"
+echo "📂 当前目录: $(pwd)"
+echo "👤 当前用户: $(whoami)"
+echo "🕐 执行时间: $(date)"
+echo ""
+mkdir -p ${remoteDir}
+cd ${remoteDir}
+echo "📂 切换到执行目录: $(pwd)"
+echo ""
+`
 
       // 添加环境变量
       if (environment) {
         this.log('🌍 设置远程环境变量:')
         for (const [key, value] of Object.entries(environment)) {
-          remoteScript += `export ${key}="${value}" && `
+          remoteScript += `export ${key}="${value}"\n`
           this.log(`   ${key}=${value}`)
         }
+        remoteScript += `echo "🌍 环境变量设置完成"\necho ""\n`
       }
 
-      remoteScript += script
+      // 添加实际的部署脚本
+      remoteScript += `echo "🚀 开始执行部署脚本..."
+${script}
+echo ""
+echo "✅ 部署脚本执行完成"
+echo "🌐 ===== 远程主机执行结束 ====="`
 
       this.log('📡 发送脚本到远程主机执行...')
+      this.log('📜 远程执行脚本预览:')
+      this.log(remoteScript.split('\n').map(line => `   ${line}`).join('\n'))
+
       await this.executeRemoteCommand(remoteScript)
       this.log('✅ 远程部署脚本执行完成')
     }
@@ -1083,6 +1255,110 @@ export class DeploymentExecutor {
     args.push(script)
 
     return args
+  }
+
+  /**
+   * 强制删除目录（用于Git克隆前的目录清理）
+   */
+  private async forceRemoveDirectory(targetDir: string): Promise<void> {
+    try {
+      if (!fs.existsSync(targetDir)) {
+        this.log(`📁 目录不存在，无需删除: ${targetDir}`)
+        return
+      }
+
+      const absoluteTargetDir = path.resolve(targetDir)
+      this.log(`🗑️ 强制删除目录: ${absoluteTargetDir}`)
+
+      // 使用系统命令强制删除，处理权限和锁定文件问题
+      if (process.platform === 'win32') {
+        // Windows系统
+        await this.executeCommand('rmdir', ['/s', '/q', absoluteTargetDir], process.cwd())
+      } else {
+        // Unix/Linux/macOS系统
+        await this.executeCommand('rm', ['-rf', absoluteTargetDir], process.cwd())
+      }
+
+      // 验证删除是否成功
+      if (fs.existsSync(absoluteTargetDir)) {
+        this.log('⚠️ 常规删除未完全成功，尝试sudo删除...')
+        await this.executeCommand('sudo', ['rm', '-rf', absoluteTargetDir], process.cwd())
+      }
+
+      this.log('✅ 目录强制删除完成')
+    } catch (error) {
+      this.log(`❌ 强制删除目录失败: ${error instanceof Error ? error.message : '未知错误'}`)
+      throw error
+    }
+  }
+
+  /**
+   * 深度清理目录（处理Git仓库和隐藏文件）
+   */
+  private async deepCleanDirectory(targetDir: string): Promise<void> {
+    try {
+      if (!fs.existsSync(targetDir)) {
+        this.log(`📁 目录不存在，无需清理: ${targetDir}`)
+        return
+      }
+
+      const absoluteTargetDir = path.resolve(targetDir)
+      this.log(`🧹 深度清理目录: ${absoluteTargetDir}`)
+
+      // 1. 尝试重置Git仓库权限（如果是Git仓库）
+      const gitDir = path.join(absoluteTargetDir, '.git')
+      if (fs.existsSync(gitDir)) {
+        this.log('📦 检测到Git仓库，重置权限...')
+        try {
+          if (process.platform !== 'win32') {
+            await this.executeCommand('chmod', ['-R', '755', absoluteTargetDir], process.cwd())
+          }
+        } catch (chmodError) {
+          this.log('⚠️ 权限重置失败，继续清理...')
+        }
+      }
+
+      // 2. 强制删除所有内容，包括隐藏文件
+      if (process.platform === 'win32') {
+        // Windows系统
+        await this.executeCommand('cmd', ['/c', `rmdir /s /q "${absoluteTargetDir}"`], process.cwd())
+      } else {
+        // Unix/Linux/macOS系统
+        await this.executeCommand('rm', ['-rf', absoluteTargetDir], process.cwd())
+      }
+
+      // 3. 验证清理结果
+      if (fs.existsSync(absoluteTargetDir)) {
+        this.log('⚠️ 深度清理未完全成功，使用最终手段...')
+
+        // 最后的手段：逐个删除文件
+        const items = fs.readdirSync(absoluteTargetDir, { withFileTypes: true })
+        for (const item of items) {
+          const itemPath = path.join(absoluteTargetDir, item.name)
+          try {
+            if (item.isDirectory()) {
+              await this.executeCommand('rm', ['-rf', itemPath], process.cwd())
+            } else {
+              fs.unlinkSync(itemPath)
+            }
+          } catch (itemError) {
+            this.log(`⚠️ 删除项目失败: ${item.name}`)
+          }
+        }
+
+        // 最后删除空目录
+        try {
+          fs.rmdirSync(absoluteTargetDir)
+        } catch (rmdirError) {
+          this.log('⚠️ 删除空目录失败，但继续执行...')
+        }
+      }
+
+      this.log('✅ 深度清理完成')
+    } catch (error) {
+      this.log(`❌ 深度清理失败: ${error instanceof Error ? error.message : '未知错误'}`)
+      throw error
+    }
   }
 
   /**
@@ -1337,9 +1613,22 @@ export async function executeDeployment(deploymentId: string): Promise<Deploymen
   // 获取部署任务信息
   const deployment = await prisma.deployment.findUnique({
     where: { id: deploymentId },
-    include: {
+    select: {
+      // 基本字段
+      id: true,
+      name: true,
+      environment: true,
+      deployScript: true,
+      buildNumber: true,
+      // Jenkins相关字段
+      isJenkinsDeployment: true,
+      jenkinsJobId: true,
+      jenkinsJobName: true,
+      jenkinsJobIds: true,
+      // 关联项目信息
       project: {
         select: {
+          id: true,
           name: true,
           buildScript: true,
           deployScript: true,
@@ -1358,25 +1647,39 @@ export async function executeDeployment(deploymentId: string): Promise<Deploymen
   // Git认证配置处理
   let gitCredentials: DeploymentConfig['gitCredentials'] = undefined
 
-  // 如果有仓库URL，检查是否需要认证
-  if (deployment.project.repositoryUrl) {
+  // 如果有仓库URL，检查是否需要认证（安全访问project）
+  if (deployment.project?.repositoryUrl) {
     const repoUrl = deployment.project.repositoryUrl
 
     // 检查是否是私有仓库（需要认证）
     if (repoUrl.includes('git.ope.ai') || repoUrl.includes('gitlab') || repoUrl.includes('github.com')) {
-      // 从环境变量获取认证信息
-      const gitUsername = process.env.GIT_USERNAME
-      const gitToken = process.env.GIT_TOKEN || process.env.GIT_PASSWORD
 
-      if (gitUsername && gitToken) {
-        gitCredentials = {
-          type: 'username_password',
-          username: gitUsername,
-          password: gitToken
+      // 1. 优先尝试从用户配置获取Git认证信息
+      try {
+        const userCredentials = await GitCredentialService.getProjectCredentials(deployment.project.id)
+        if (userCredentials && userCredentials.token) {
+          gitCredentials = {
+            type: 'token',
+            token: userCredentials.token
+          }
+          console.log('🔐 使用用户配置的Git Token认证')
+        } else if (userCredentials && userCredentials.username && userCredentials.password) {
+          gitCredentials = {
+            type: 'username_password',
+            username: userCredentials.username,
+            password: userCredentials.password
+          }
+          console.log('🔐 使用用户配置的Git用户名密码认证')
         }
-        console.log('🔐 使用环境变量中的Git认证信息')
-      } else {
-        console.log('⚠️ 未找到Git认证信息，尝试无认证访问')
+      } catch (error) {
+        console.log('⚠️ 获取用户Git认证信息失败:', error)
+      }
+
+      // 2. 如果用户没有配置认证信息，记录警告并尝试无认证访问
+      if (!gitCredentials) {
+        console.log('⚠️ 用户未配置Git认证信息')
+        console.log('💡 建议：在系统中添加Git认证配置以访问私有仓库')
+        console.log('📝 支持的认证方式：GitHub Token、GitLab Token、用户名密码、SSH密钥')
       }
     } else {
       console.log('📂 检测到公共仓库，无需认证')
@@ -1384,47 +1687,53 @@ export async function executeDeployment(deploymentId: string): Promise<Deploymen
   }
 
   // 获取关联的主机信息
-  // 优先使用项目配置的主机ID，如果没有则使用本地主机
-  const hostId = deployment.project.serverId || 'localhost'
+  // 优先使用项目配置的主机ID，如果没有则使用本地主机（安全访问project）
+  const hostId = deployment.project?.serverId || 'localhost'
 
   console.log('🎯 部署配置信息:', {
     deploymentId,
-    projectName: deployment.project.name,
-    repositoryUrl: deployment.project.repositoryUrl,
-    branch: deployment.project.branch,
-    projectServerId: deployment.project.serverId,
+    projectName: deployment.project?.name || 'Jenkins任务',
+    repositoryUrl: deployment.project?.repositoryUrl || null,
+    branch: deployment.project?.branch || 'main',
+    projectServerId: deployment.project?.serverId || null,
     finalHostId: hostId,
     hasGitCredentials: !!gitCredentials,
+    isJenkinsDeployment: deployment.isJenkinsDeployment || false,
+    jenkinsJobName: deployment.jenkinsJobName || null,
     // 添加脚本配置信息
-    hasBuildScript: !!deployment.project.buildScript,
-    hasDeployScript: !!(deployment.deployScript || deployment.project.deployScript),
+    hasBuildScript: !!deployment.project?.buildScript,
+    hasDeployScript: !!(deployment.deployScript || deployment.project?.deployScript),
     deploymentDeployScript: deployment.deployScript ? '已配置' : '未配置',
-    projectDeployScript: deployment.project.deployScript ? '已配置' : '未配置',
+    projectDeployScript: deployment.project?.deployScript ? '已配置' : '未配置',
     // 添加远程部署配置信息
     useRemoteProject: true,
-    remoteProjectPath: `/var/www/${deployment.project.name || 'app'}`
+    remoteProjectPath: `/var/www/${deployment.project?.name || deployment.jenkinsJobName || 'app'}`
   })
 
-  const executor = new DeploymentExecutor(deploymentId, deployment.project.repositoryUrl)
+  const executor = new DeploymentExecutor(deploymentId, deployment.project?.repositoryUrl)
 
   const config: DeploymentConfig = {
     deploymentId,
     hostId,
-    buildScript: deployment.project.buildScript || undefined,
-    deployScript: deployment.deployScript || deployment.project.deployScript || undefined,
-    repositoryUrl: deployment.project.repositoryUrl || undefined,
-    branch: deployment.project.branch || 'main',
+    buildScript: deployment.project?.buildScript || undefined,
+    deployScript: deployment.deployScript || deployment.project?.deployScript || undefined,
+    repositoryUrl: deployment.project?.repositoryUrl || undefined,
+    branch: deployment.project?.branch || 'main',
     gitCredentials,
     workingDirectory: '/tmp/deployment',
     // 远程部署配置
     useRemoteProject: true, // 默认使用远程项目目录模式
-    remoteProjectPath: `/var/www/${deployment.project.name || 'app'}`, // 基于项目名生成远程路径
+    remoteProjectPath: `/var/www/${deployment.project?.name || deployment.jenkinsJobName || 'app'}`, // 基于项目名或Jenkins任务名生成远程路径
     environment: {
       NODE_ENV: deployment.environment,
       DEPLOYMENT_ID: deploymentId,
-      PROJECT_NAME: deployment.project.name || 'unknown-project',
+      PROJECT_NAME: deployment.project?.name || deployment.jenkinsJobName || 'unknown-project',
       BUILD_NUMBER: deployment.buildNumber?.toString() || 'latest',
-      GIT_BRANCH: deployment.project.branch || 'main'
+      GIT_BRANCH: deployment.project?.branch || 'main',
+      // Jenkins相关环境变量
+      IS_JENKINS_DEPLOYMENT: deployment.isJenkinsDeployment ? 'true' : 'false',
+      JENKINS_JOB_ID: deployment.jenkinsJobId || '',
+      JENKINS_JOB_NAME: deployment.jenkinsJobName || ''
     },
     timeout: 300000 // 5分钟超时
   }

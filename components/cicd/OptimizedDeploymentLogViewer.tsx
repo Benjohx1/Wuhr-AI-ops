@@ -17,6 +17,9 @@ interface OptimizedDeploymentLogViewerProps {
   onClose: () => void
   deploymentId: string
   deploymentName: string
+  isJenkinsDeployment?: boolean // 是否为Jenkins部署任务
+  jenkinsJobId?: string // Jenkins任务ID
+  jenkinsBuildNumber?: number // Jenkins构建号
 }
 
 interface LogEntry {
@@ -212,17 +215,41 @@ const OptimizedDeploymentLogViewer: React.FC<OptimizedDeploymentLogViewerProps> 
 
     try {
       setLoading(true)
-      const response = await fetch(`/api/cicd/deployments/${deploymentId}/status`)
+
+      // 使用新的日志API
+      const response = await fetch(`/api/cicd/deployments/${deploymentId}/logs?follow=true&maxLines=1000`)
       const data = await response.json()
 
       if (data.success) {
-        setStatus(data.data.status)
+        setStatus(data.data.deployment.status)
 
         if (data.data.logs) {
           const logLines = data.data.logs.split('\n').filter((line: string) => line.trim())
           const parsedLogs = logLines.map(parseLogEntry)
           setLogs(parsedLogs)
           updateStages(parsedLogs)
+
+          // 更新进度（基于日志分析）
+          if (data.data.analysis) {
+            const analysis = data.data.analysis
+            let progressPercent = 0
+
+            if (data.data.deployment.status === 'success') {
+              progressPercent = 100
+            } else if (data.data.deployment.status === 'failed') {
+              progressPercent = 100
+            } else if (data.data.deployment.status === 'deploying') {
+              // 基于主机部署进度计算
+              if (analysis.hostResults && analysis.hostResults.length > 0) {
+                const completedHosts = analysis.hostResults.filter((h: any) => h.status !== 'running').length
+                progressPercent = Math.round((completedHosts / analysis.hostResults.length) * 100)
+              } else {
+                progressPercent = 30 // 默认进度
+              }
+            }
+
+            setProgress(progressPercent)
+          }
 
           // 自动滚动到底部（仅在启用自动滚动时）
           if (autoScroll) {

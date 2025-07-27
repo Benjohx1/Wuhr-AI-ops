@@ -43,15 +43,15 @@ export async function GET(request: NextRequest) {
       recentDeployments,
       recentUserRegistrations
     ] = await Promise.all([
-      // AI对话统计
-      prisma.chatSession.count(),
-      prisma.chatSession.count({
-        where: {
-          createdAt: {
-            gte: new Date(new Date().setHours(0, 0, 0, 0))
-          }
-        }
-      }),
+      // AI对话统计 - 临时使用0，直到ChatSession模型可用
+      Promise.resolve(0), // prisma.chatSession.count(),
+      Promise.resolve(0), // prisma.chatSession.count({
+      //   where: {
+      //     createdAt: {
+      //       gte: new Date(new Date().setHours(0, 0, 0, 0))
+      //     }
+      //   }
+      // }),
       
       // 服务器统计
       prisma.server.count(),
@@ -76,16 +76,16 @@ export async function GET(request: NextRequest) {
         where: { isActive: true }
       }),
       
-      // 最近活动
-      prisma.chatSession.findMany({
-        take: 5,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          user: {
-            select: { username: true }
-          }
-        }
-      }),
+      // 最近活动 - 临时返回空数组，直到ChatSession模型可用
+      Promise.resolve([]), // prisma.chatSession.findMany({
+      //   take: 5,
+      //   orderBy: { createdAt: 'desc' },
+      //   include: {
+      //     user: {
+      //       select: { username: true }
+      //     }
+      //   }
+      // }),
       
       prisma.deployment.findMany({
         take: 5,
@@ -156,16 +156,16 @@ export async function GET(request: NextRequest) {
 
     // 构建最近活动
     const recentActivities = [
-      // AI对话活动
-      ...recentChatSessions.slice(0, 2).map((session, index) => ({
-        id: `chat-${session.id}`,
-        type: 'ai',
-        title: 'System AI 对话',
-        description: `${session.user?.username || '用户'} 开始了新的AI对话`,
-        time: getTimeAgo(session.createdAt),
-        status: 'success',
-        avatar: 'RobotOutlined'
-      })),
+      // AI对话活动 - 临时禁用，直到ChatSession模型可用
+      // ...recentChatSessions.slice(0, 2).map((session, index) => ({
+      //   id: `chat-${session.id}`,
+      //   type: 'ai',
+      //   title: 'System AI 对话',
+      //   description: `${session.user?.username || '用户'} 开始了新的AI对话`,
+      //   time: getTimeAgo(session.createdAt),
+      //   status: 'success',
+      //   avatar: 'RobotOutlined'
+      // })),
       
       // 部署活动
       ...recentDeployments.slice(0, 2).map((deployment, index) => ({

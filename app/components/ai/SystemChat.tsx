@@ -71,6 +71,8 @@ import FileUpload from './FileUpload'
 import type { FileInfo } from './FileUpload'
 import AILoadingAnimation from './AILoadingAnimation'
 import ReasoningChainRenderer from './ReasoningChainRenderer'
+import AIMessageRenderer from './AIMessageRenderer'
+import UserMessageRenderer from './UserMessageRenderer'
 import { isMultimodalModel } from '../../utils/modelUtils'
 
 
@@ -105,7 +107,7 @@ const SystemChat: React.FC = () => {
       temperature: 0.7,
       maxTokens: 2000,
       autoExecution: true,
-      systemPrompt: '你是Wuhr AI，一个专业的DevOps和Kubernetes助手，请用中文回复。你可以帮助用户执行系统命令、管理Kubernetes集群、分析日志、监控系统性能等。请提供简洁明确的回复，包括：使用的命令、执行结果、优化建议。'
+      systemPrompt: '你是Wuhr AI，一个专业的DevOps和Kubernetes运维助手。重要规则：\n1. 必须直接执行用户请求的操作，而不是仅仅告诉用户如何操作\n2. 每次回复都应该是实际执行结果，包含具体的命令输出和数据\n3. 使用中文回复，提供简洁明确的执行结果分析\n4. 包括：执行的命令、实际结果、状态分析、优化建议\n5. 主动执行相关的检查和监控命令来获取完整信息'
     }
   })
 
@@ -188,6 +190,7 @@ const SystemChat: React.FC = () => {
   const [historySearchQuery, setHistorySearchQuery] = useState('')
   const [uploadedFiles, setUploadedFiles] = useState<FileInfo[]>([])
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
+  const [isK8sMode, setIsK8sMode] = useState(false)
 
   // 主机配置状态
   const [hostConfig, setHostConfig] = useState({
@@ -242,6 +245,37 @@ const SystemChat: React.FC = () => {
       setLoadingServers(false)
     }
   }
+
+  // 快捷键处理
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 检查焦点是否在输入框或其他可编辑元素上
+      const target = e.target as HTMLElement
+      if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.contentEditable === 'true') {
+        return // 在输入框中不触发快捷键
+      }
+
+      // Ctrl + K: 切换K8s模式
+      if (e.ctrlKey && e.key === 'k') {
+        e.preventDefault()
+        setIsK8sMode(prev => !prev)
+        message.info(`已切换到${!isK8sMode ? 'K8s集群' : 'Linux系统'}模式`)
+      }
+      // Ctrl + L: 强制切换到Linux模式
+      if (e.ctrlKey && e.key === 'l') {
+        e.preventDefault()
+        setIsK8sMode(false)
+        message.info('已切换到Linux系统模式')
+      }
+    }
+
+    // 添加全局键盘事件监听
+    document.addEventListener('keydown', handleKeyDown)
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isK8sMode])
 
   // 组件清理函数
   useEffect(() => {
@@ -611,7 +645,8 @@ const SystemChat: React.FC = () => {
       baseUrl: currentModelConfig.baseUrl,
       provider: currentModelConfig.provider,
       autoExecution: config.autoExecution,
-      hostId: currentHostId // 直接使用计算出的hostId
+      hostId: currentHostId, // 直接使用计算出的hostId
+      isK8sMode: isK8sMode // 添加K8s模式标识
     }
 
     await sendMessage(finalMessage, requestConfig)
@@ -678,73 +713,25 @@ const SystemChat: React.FC = () => {
             />
           </div>
 
-          <div
-            className={`rounded-lg p-3 min-w-0 flex-1 overflow-hidden ${
-              isUser
-                ? 'bg-blue-600 text-white'
-                : isError
-                ? 'bg-red-900/50 text-red-200'
-                : 'bg-gray-700/80 text-gray-100 border border-gray-600/30'
-            }`}
-          >
-            <div className="prose prose-sm max-w-none overflow-hidden break-words">
-              {isUser ? (
-                <div className="whitespace-pre-wrap text-white">
-                  {msg.content}
-                </div>
-              ) : msg.content === '__LOADING_ANIMATION__' ? (
+          <div className="min-w-0 flex-1 overflow-hidden">
+            {isUser ? (
+              <UserMessageRenderer
+                content={msg.content}
+                timestamp={msg.timestamp instanceof Date ? msg.timestamp.toISOString() : msg.timestamp}
+                className="user-message"
+              />
+            ) : msg.content === '__LOADING_ANIMATION__' ? (
+              <div className="rounded-lg p-3 bg-gray-700/80 text-gray-100 border border-gray-600/30">
                 <AILoadingAnimation className="py-2" />
-              ) : (
-                <ReasoningChainRenderer
-                  content={msg.content}
-                  modelName={config.model}
-                  className="reasoning-chain"
-                />
-              )}
-            </div>
-            
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-600/20">
-              <div className="flex items-center space-x-2">
-                <Text className="text-xs text-gray-500">
-                  {msg.timestamp instanceof Date
-                    ? msg.timestamp.toLocaleTimeString()
-                    : new Date(msg.timestamp).toLocaleTimeString()
-                  }
-                </Text>
-                {msg.metadata?.tokenUsage && (
-                  <Text className="text-xs text-gray-500">
-                    {msg.metadata.tokenUsage.totalTokens} tokens
-                  </Text>
-                )}
               </div>
-              
-              <Space size="small">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<CopyOutlined />}
-                  onClick={() => copyMessage(msg.content)}
-                  className="text-gray-400 hover:text-white"
-                />
-                {isUser && (
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<RedoOutlined />}
-                    onClick={() => resendMessage(msg.id)}
-                    className="text-gray-400 hover:text-white"
-                    disabled={isLoading}
-                  />
-                )}
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<DeleteOutlined />}
-                  onClick={() => deleteMessage(msg.id)}
-                  className="text-gray-400 hover:text-red-400"
-                />
-              </Space>
-            </div>
+            ) : (
+              <AIMessageRenderer
+                content={msg.content}
+                isError={isError}
+                metadata={msg.metadata}
+                className="ai-response"
+              />
+            )}
           </div>
         </div>
       </div>
@@ -945,43 +932,54 @@ const SystemChat: React.FC = () => {
                 />
 
                 <div className="flex flex-col space-y-2">
-                  <Tooltip
-                    title={
-                      isMultimodalModel(config.model)
-                        ? "上传文件或图像（当前模型支持图像理解）"
-                        : "上传文件（选择多模态模型可支持图像理解）"
-                    }
-                  >
+                  <Tooltip title="K8s集群命令模式 (Ctrl+K切换)">
                     <Button
-                      icon={<CloudUploadOutlined />}
-                      onClick={() => setShowFileUpload(!showFileUpload)}
-                      type={showFileUpload ? 'primary' : 'default'}
-                    />
+                      icon={<GlobalOutlined />}
+                      onClick={() => setIsK8sMode(!isK8sMode)}
+                      type={isK8sMode ? 'primary' : 'default'}
+                      style={{
+                        backgroundColor: isK8sMode ? '#1890ff' : undefined,
+                        borderColor: isK8sMode ? '#1890ff' : undefined,
+                        color: isK8sMode ? '#fff' : undefined
+                      }}
+                    >
+                      K8s
+                    </Button>
                   </Tooltip>
 
+                  <div className="flex space-x-2">
+                    <Tooltip title="文件上传功能暂时不可用">
+                      <Button
+                        icon={<CloudUploadOutlined />}
+                        onClick={() => setShowFileUpload(!showFileUpload)}
+                        type={showFileUpload ? 'primary' : 'default'}
+                        disabled={true}
+                        style={{ opacity: 0.5 }}
+                      />
+                    </Tooltip>
 
-
-                  {isLoading ? (
-                    <Button
-                      danger
-                      icon={<StopOutlined />}
-                      onClick={stopGeneration}
-                      loading={false}
-                    >
-                      停止
-                    </Button>
-                  ) : (
-                    <Button
-                      type="primary"
-                      icon={<SendOutlined />}
-                      onClick={handleSendMessage}
-                      disabled={!inputValue.trim() || !currentModelConfig}
-                      loading={isLoading}
-                      className="btn-primary"
-                    >
-                      发送
-                    </Button>
-                  )}
+                    {isLoading ? (
+                      <Button
+                        danger
+                        icon={<StopOutlined />}
+                        onClick={stopGeneration}
+                        loading={false}
+                      >
+                        停止
+                      </Button>
+                    ) : (
+                      <Button
+                        type="primary"
+                        icon={<SendOutlined />}
+                        onClick={handleSendMessage}
+                        disabled={!inputValue.trim() || !currentModelConfig}
+                        loading={isLoading}
+                        className="btn-primary"
+                      >
+                        发送
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -990,6 +988,9 @@ const SystemChat: React.FC = () => {
                   {/* 限制最多显示3个标签 */}
                   <Tag color="blue" className="text-xs">
                     {currentModelConfig?.displayName || '未选择模型'}
+                  </Tag>
+                  <Tag color={isK8sMode ? 'cyan' : 'purple'} className="text-xs">
+                    {isK8sMode ? 'K8s集群' : 'Linux系统'}
                   </Tag>
                   <Tag color={config.autoExecution ? 'green' : 'orange'} className="text-xs">
                     {config.autoExecution ? '自动执行' : '手动确认'}
@@ -1000,7 +1001,7 @@ const SystemChat: React.FC = () => {
                 </div>
 
                 <Text className="text-gray-400 text-sm">
-                  按 Enter 发送，Shift+Enter 换行
+                  Enter发送 | Shift+Enter换行 | Ctrl+K切换模式 | Ctrl+L切换到Linux
                 </Text>
               </div>
             </div>

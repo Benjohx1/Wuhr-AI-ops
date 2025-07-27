@@ -42,7 +42,14 @@ export async function GET(request: NextRequest) {
         type: result.notifications[0].type,
         title: result.notifications[0].title,
         isRead: result.notifications[0].isRead
-      } : null
+      } : null,
+      allNotificationTypes: result.notifications.map((n: any) => ({
+        id: n.id,
+        type: n.type,
+        title: n.title,
+        isRead: n.isRead,
+        userId: n.userId
+      }))
     })
 
     // 分类通知
@@ -59,6 +66,15 @@ export async function GET(request: NextRequest) {
         notification.type === 'cicd_approval' ||
         notification.type === 'user_approval'
 
+      console.log(`🔍 [Info Notifications API] 分类通知 ${notification.id}:`, {
+        type: notification.type,
+        title: notification.title,
+        isApprovalNotification,
+        metadata: metadata,
+        hasApprovalInType: notification.type && notification.type.includes('approval'),
+        category: isApprovalNotification ? 'approval' : 'info'
+      })
+
       if (isApprovalNotification) {
         approvalNotifications.push({
           ...notification,
@@ -71,6 +87,14 @@ export async function GET(request: NextRequest) {
         })
       }
     }
+
+    console.log('📋 [Info Notifications API] 分类结果:', {
+      totalNotifications: result.notifications.length,
+      approvalCount: approvalNotifications.length,
+      infoCount: infoNotifications.length,
+      approvalTypes: approvalNotifications.map(n => n.type),
+      infoTypes: infoNotifications.map(n => n.type)
+    })
 
     // 根据请求类型返回对应的通知
     let filteredNotifications: any[] = []

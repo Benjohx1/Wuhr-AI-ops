@@ -189,39 +189,62 @@ const InfoNotificationBell: React.FC<InfoNotificationBellProps> = ({
     if (!user) return
 
     let eventSource: EventSource | null = null
+    let reconnectAttempts = 0
+    const maxReconnectAttempts = 5
 
     const connectRealtime = () => {
-      eventSource = new EventSource('/api/notifications/realtime')
-      
-      eventSource.onopen = () => {
-        console.log('📡 实时通知连接已建立')
-      }
+      try {
+        console.log('📡 [信息通知] 建立实时连接...')
+        eventSource = new EventSource('/api/notifications/realtime')
 
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data)
-          
-          if (data.type === 'info_notification') {
-            // 收到新的信息通知
-            setNotifications(prev => [data.data, ...prev.slice(0, 9)]) // 保持最多10条
-            setUnreadCount(prev => prev + 1)
-            console.log('📬 收到实时通知:', data.data.title)
-          }
-        } catch (error) {
-          console.error('解析实时通知失败:', error)
+        eventSource.onopen = () => {
+          console.log('📡 [信息通知] 实时连接已建立')
+          reconnectAttempts = 0 // 重置重连计数
         }
-      }
 
-      eventSource.onerror = () => {
-        console.log('📡 实时通知连接断开，尝试重连...')
-        eventSource?.close()
-        setTimeout(connectRealtime, 5000) // 5秒后重连
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+
+            if (data.type === 'connected') {
+              console.log('📡 [信息通知] 连接确认:', data.message)
+            } else if (data.type === 'heartbeat') {
+              // 心跳消息，保持连接活跃
+              console.log('💓 [信息通知] 收到心跳')
+            } else if (data.type === 'info_notification') {
+              // 收到新的信息通知
+              console.log('📬 [信息通知] 收到实时通知:', data.data.title)
+              setNotifications(prev => [data.data, ...prev.slice(0, 9)]) // 保持最多10条
+              setUnreadCount(prev => prev + 1)
+            }
+          } catch (error) {
+            console.error('❌ [信息通知] 解析实时通知失败:', error)
+          }
+        }
+
+        eventSource.onerror = (error) => {
+          console.error('❌ [信息通知] 实时连接错误:', error)
+          eventSource?.close()
+
+          // 实现指数退避重连
+          if (reconnectAttempts < maxReconnectAttempts) {
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000) // 最大30秒
+            reconnectAttempts++
+            console.log(`🔄 [信息通知] ${delay}ms后尝试第${reconnectAttempts}次重连...`)
+            setTimeout(connectRealtime, delay)
+          } else {
+            console.error('❌ [信息通知] 达到最大重连次数，停止重连')
+          }
+        }
+      } catch (error) {
+        console.error('❌ [信息通知] 建立实时连接失败:', error)
       }
     }
 
     connectRealtime()
 
     return () => {
+      console.log('🔌 [信息通知] 关闭实时连接')
       eventSource?.close()
     }
   }, [user])

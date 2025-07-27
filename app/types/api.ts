@@ -107,6 +107,7 @@ export interface KubeletWuhraiRequest {
   quiet?: boolean // kubelet-wuhrai特有的quiet模式
   stream?: boolean // 流式响应
   sessionId?: string // 会话ID
+  isK8sMode?: boolean // K8s命令模式，true为K8s集群模式，false为Linux系统模式
   context?: {
     namespace?: string
     cluster?: string

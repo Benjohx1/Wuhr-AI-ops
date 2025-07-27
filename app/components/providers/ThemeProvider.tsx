@@ -14,14 +14,22 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   // 更新 HTML 类名
   useEffect(() => {
     const htmlElement = document.documentElement
+    const bodyElement = document.body
+
+    console.log('🎨 [ThemeProvider] 应用主题:', currentTheme, '是否暗色:', isDark)
+
     if (isDark) {
       htmlElement.classList.add('dark')
       htmlElement.classList.remove('light')
+      bodyElement.classList.add('dark')
+      bodyElement.classList.remove('light')
     } else {
       htmlElement.classList.add('light')
       htmlElement.classList.remove('dark')
+      bodyElement.classList.add('light')
+      bodyElement.classList.remove('dark')
     }
-  }, [isDark])
+  }, [isDark, currentTheme])
 
   // 深色主题配置
   const darkThemeConfig = {

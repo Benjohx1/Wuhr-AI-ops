@@ -269,13 +269,13 @@ export async function POST(request: NextRequest) {
         await ApprovalRecordService.createRecord({
           approvalType: 'deployment',
           targetId: approval.deploymentId,
-          targetName: `${approval.deployment.project.name} - 部署任务`,
+          targetName: `${approval.deployment.project?.name || '未知项目'} - 部署任务`,
           operatorId: user.id,
           operatorName: user.username,
           action: action === 'approve' ? 'approved' : 'rejected',
           comment: comment || (action === 'approve' ? '部署审批通过' : '部署审批拒绝'),
           metadata: {
-            projectName: approval.deployment.project.name,
+            projectName: approval.deployment.project?.name || '未知项目',
             deploymentId: approval.deploymentId,
             approvalId: approvalId,
             requestUser: approval.deployment.user.username,
@@ -319,6 +319,52 @@ export async function POST(request: NextRequest) {
         oldStatus: approval.deployment.status,
         newStatus: newDeploymentStatus
       })
+
+      // 广播部署状态更新通知
+      try {
+        await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3001'}/api/notifications/broadcast`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'deployment_status_update',
+            deploymentId: approval.deploymentId,
+            status: newDeploymentStatus,
+            data: {
+              deploymentName: approval.deployment.name,
+              approverName: user.username,
+              timestamp: new Date().toISOString()
+            }
+          })
+        })
+        console.log('📡 部署状态更新广播已发送')
+      } catch (broadcastError) {
+        console.error('❌ 发送状态更新广播失败:', broadcastError)
+      }
+
+      // 如果审批通过且有审批人员配置，自动开始部署
+      if (newDeploymentStatus === 'approved' && approval.deployment.approvalUsers && Array.isArray(approval.deployment.approvalUsers) && approval.deployment.approvalUsers.length > 0) {
+        try {
+          console.log('🚀 审批通过，开始自动部署:', approval.deploymentId)
+
+          // 调用部署启动API
+          const deployStartResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3001'}/api/cicd/deployments/${approval.deploymentId}/start`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': request.headers.get('Authorization') || ''
+            }
+          })
+
+          if (deployStartResponse.ok) {
+            console.log('✅ 自动部署启动成功')
+          } else {
+            console.error('❌ 自动部署启动失败:', await deployStartResponse.text())
+          }
+        } catch (autoDeployError) {
+          console.error('❌ 自动部署启动异常:', autoDeployError)
+          // 不影响审批流程，继续执行
+        }
+      }
 
       // 如果审批通过且所有审批都完成，自动开始部署
       if (newDeploymentStatus === 'approved') {

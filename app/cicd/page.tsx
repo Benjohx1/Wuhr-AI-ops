@@ -10,7 +10,8 @@ import {
   RocketOutlined,
   ClockCircleOutlined,
   ExclamationCircleOutlined,
-  PlayCircleOutlined
+  PlayCircleOutlined,
+  FileTextOutlined
 } from '@ant-design/icons'
 import Link from 'next/link'
 import MainLayout from '../components/layout/MainLayout'
@@ -49,17 +50,24 @@ const CICDOverviewPage: React.FC = () => {
 
   const quickActions = [
     {
-      title: '项目管理',
-      description: '管理CI/CD项目，配置代码仓库和构建设置',
+      title: '持续集成',
+      description: '管理CI构建流程，配置代码仓库、构建设置和通知人员',
       icon: <ProjectOutlined className="text-2xl text-blue-500" />,
       href: '/cicd/projects',
       permission: 'cicd:read'
     },
     {
-      title: '部署管理',
-      description: '创建和管理部署任务，监控部署状态',
+      title: '持续部署',
+      description: '管理CD部署流程，配置部署主机、通知人员、审批人员和部署模板',
       icon: <RocketOutlined className="text-2xl text-green-500" />,
       href: '/cicd/deployments',
+      permission: 'cicd:read'
+    },
+    {
+      title: '模板管理',
+      description: '管理部署模板，支持Kubernetes、Docker、Shell和Ansible等多种类型',
+      icon: <FileTextOutlined className="text-2xl text-purple-500" />,
+      href: '/cicd/templates',
       permission: 'cicd:read'
     },
     {

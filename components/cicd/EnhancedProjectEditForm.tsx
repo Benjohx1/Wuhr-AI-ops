@@ -13,15 +13,22 @@ import {
   Tag,
   message,
   Tabs,
-  Alert
+  Alert,
+  InputNumber,
+  Checkbox,
+  Switch,
+  Divider
 } from 'antd'
 import {
   SaveOutlined,
   EyeOutlined,
   CodeOutlined,
   SettingOutlined,
-  TagsOutlined
+  TagsOutlined,
+  NotificationOutlined,
+  ClockCircleOutlined
 } from '@ant-design/icons'
+import UserSelector from '../../app/components/common/UserSelector'
 
 const { Title, Text } = Typography
 const { TextArea } = Input
@@ -34,19 +41,16 @@ interface Project {
   repositoryUrl: string
   branch: string
   buildScript?: string
-  deployScript?: string
-  serverId?: string
   tags?: string[]
   environmentVariables?: { [key: string]: string }
-  preDeployScript?: string
-  postDeployScript?: string
-}
-
-interface Server {
-  id: string
-  name: string
-  hostname: string
-  ip: string
+  notificationUsers?: string[]
+  buildTriggers?: {
+    onPush: boolean
+    onPullRequest: boolean
+    onSchedule: boolean
+    scheduleExpression?: string
+  }
+  buildTimeout?: number
 }
 
 interface EnhancedProjectEditFormProps {
@@ -54,25 +58,21 @@ interface EnhancedProjectEditFormProps {
   onClose: () => void
   onSave: (project: Partial<Project>) => Promise<void>
   project?: Project
-  servers: Server[]
 }
 
 const EnhancedProjectEditForm: React.FC<EnhancedProjectEditFormProps> = ({
   visible,
   onClose,
   onSave,
-  project,
-  servers
+  project
 }) => {
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
   const [previewMode, setPreviewMode] = useState(false)
   const [activeTab, setActiveTab] = useState('basic')
-  const [deployScript, setDeployScript] = useState('')
-  const [preDeployScript, setPreDeployScript] = useState('')
-  const [postDeployScript, setPostDeployScript] = useState('')
   const [envVars, setEnvVars] = useState<{ key: string; value: string }[]>([])
   const [tags, setTags] = useState<string[]>([])
+  const [requireApproval, setRequireApproval] = useState(false)
 
   // 初始化表单数据
   useEffect(() => {
@@ -83,13 +83,20 @@ const EnhancedProjectEditForm: React.FC<EnhancedProjectEditFormProps> = ({
         repositoryUrl: project.repositoryUrl,
         branch: project.branch,
         buildScript: project.buildScript || '',
-        serverId: project.serverId || undefined
+        notificationUsers: project.notificationUsers || [],
+        buildTriggers: {
+          onPush: project.buildTriggers?.onPush ?? true,
+          onPullRequest: project.buildTriggers?.onPullRequest ?? false,
+          onSchedule: project.buildTriggers?.onSchedule ?? false,
+          scheduleExpression: project.buildTriggers?.scheduleExpression || ''
+        },
+        buildTimeout: project.buildTimeout || 30,
+        approvalUsers: (project as any).approvalUsers || [],
+        requireApproval: (project as any).requireApproval || false
       })
-      
-      setDeployScript(project.deployScript || '')
-      setPreDeployScript(project.preDeployScript || '')
-      setPostDeployScript(project.postDeployScript || '')
+
       setTags(project.tags || [])
+      setRequireApproval((project as any).requireApproval || false)
       
       // 转换环境变量格式
       const envVarArray = Object.entries(project.environmentVariables || {}).map(([key, value]) => ({
@@ -100,11 +107,21 @@ const EnhancedProjectEditForm: React.FC<EnhancedProjectEditFormProps> = ({
     } else if (visible && !project) {
       // 新建项目时的默认值
       form.resetFields()
-      setDeployScript('#!/bin/bash\n# 部署脚本示例\necho "开始部署..."\n# 在这里添加您的部署命令\necho "部署完成"')
-      setPreDeployScript('')
-      setPostDeployScript('')
+      form.setFieldsValue({
+        buildTriggers: {
+          onPush: true,
+          onPullRequest: false,
+          onSchedule: false,
+          scheduleExpression: ''
+        },
+        buildTimeout: 30,
+        notificationUsers: [],
+        approvalUsers: [],
+        requireApproval: false
+      })
       setTags([])
       setEnvVars([])
+      setRequireApproval(false)
     }
   }, [visible, project, form])
 
@@ -124,9 +141,6 @@ const EnhancedProjectEditForm: React.FC<EnhancedProjectEditFormProps> = ({
 
       const projectData: Partial<Project> = {
         ...values,
-        deployScript,
-        preDeployScript,
-        postDeployScript,
         tags,
         environmentVariables
       }
@@ -184,15 +198,10 @@ const EnhancedProjectEditForm: React.FC<EnhancedProjectEditFormProps> = ({
             <Col span={12}><Text strong>分支:</Text> {values.branch}</Col>
             <Col span={24}><Text strong>描述:</Text> {values.description}</Col>
             <Col span={24}><Text strong>仓库地址:</Text> {values.repositoryUrl}</Col>
-            <Col span={12}><Text strong>目标服务器:</Text> {servers.find(s => s.id === values.serverId)?.name || '本地'}</Col>
           </Row>
         </Card>
 
-        <Card size="small" title="部署脚本" style={{ marginBottom: '16px' }}>
-          <pre style={{ backgroundColor: '#f5f5f5', padding: '12px', borderRadius: '4px', fontSize: '12px' }}>
-            {deployScript || '未设置'}
-          </pre>
-        </Card>
+
 
         {tags.length > 0 && (
           <Card size="small" title="项目标签" style={{ marginBottom: '16px' }}>
@@ -311,20 +320,6 @@ const EnhancedProjectEditForm: React.FC<EnhancedProjectEditFormProps> = ({
                   <Row gutter={16}>
                     <Col span={12}>
                       <Form.Item
-                        label="目标服务器"
-                        name="serverId"
-                      >
-                        <Select placeholder="选择目标服务器（留空为本地部署）" allowClear>
-                          {servers.map(server => (
-                            <Option key={server.id} value={server.id}>
-                              {server.name} ({server.ip})
-                            </Option>
-                          ))}
-                        </Select>
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item
                         label="构建脚本"
                         name="buildScript"
                       >
@@ -333,68 +328,6 @@ const EnhancedProjectEditForm: React.FC<EnhancedProjectEditFormProps> = ({
                     </Col>
                   </Row>
                 </Form>
-              )
-            },
-            {
-              key: 'scripts',
-              label: <span><CodeOutlined />部署脚本</span>,
-              children: (
-                <div>
-                  <Alert
-                    message="部署脚本配置"
-                    description="配置项目的部署脚本。这是简化部署流程的核心配置，系统将直接执行这些脚本。"
-                    type="warning"
-                    showIcon
-                    style={{ marginBottom: '16px' }}
-                  />
-
-                  <Card title="主部署脚本" size="small" style={{ marginBottom: '16px' }}>
-                    <TextArea
-                      rows={12}
-                      value={deployScript}
-                      onChange={(e) => setDeployScript(e.target.value)}
-                      placeholder="#!/bin/bash&#10;# 部署脚本示例&#10;echo '开始部署...'&#10;# 在这里添加您的部署命令&#10;echo '部署完成'"
-                      style={{
-                        fontFamily: 'Monaco, Consolas, "Courier New", monospace',
-                        fontSize: '13px',
-                        backgroundColor: '#f8f9fa',
-                        border: '1px solid #d9d9d9'
-                      }}
-                    />
-                    <Text type="secondary" style={{ fontSize: '12px', marginTop: '8px', display: 'block' }}>
-                      主要的部署脚本，系统将执行此脚本进行部署
-                    </Text>
-                  </Card>
-
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Card title="部署前脚本" size="small">
-                        <TextArea
-                          rows={6}
-                          value={preDeployScript}
-                          onChange={(e) => setPreDeployScript(e.target.value)}
-                          placeholder="# 部署前执行的脚本（可选）&#10;echo '准备部署...'"
-                        />
-                        <Text type="secondary" style={{ fontSize: '12px' }}>
-                          在主部署脚本执行前运行
-                        </Text>
-                      </Card>
-                    </Col>
-                    <Col span={12}>
-                      <Card title="部署后脚本" size="small">
-                        <TextArea
-                          rows={6}
-                          value={postDeployScript}
-                          onChange={(e) => setPostDeployScript(e.target.value)}
-                          placeholder="# 部署后执行的脚本（可选）&#10;echo '部署完成，进行清理...'"
-                        />
-                        <Text type="secondary" style={{ fontSize: '12px' }}>
-                          在主部署脚本执行后运行
-                        </Text>
-                      </Card>
-                    </Col>
-                  </Row>
-                </div>
               )
             },
             {
@@ -462,6 +395,96 @@ const EnhancedProjectEditForm: React.FC<EnhancedProjectEditFormProps> = ({
                     <Button type="dashed" onClick={addEnvVar} style={{ width: '100%' }}>
                       + 添加环境变量
                     </Button>
+                  </Card>
+                </div>
+              )
+            },
+            {
+              key: 'ci-config',
+              label: <span><NotificationOutlined />CI配置</span>,
+              children: (
+                <div>
+                  <Alert
+                    message="持续集成配置"
+                    description="配置CI构建流程的通知人员、构建触发器和超时设置。"
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: '16px' }}
+                  />
+
+                  <Card title="通知设置" size="small" style={{ marginBottom: '16px' }}>
+                    <Form.Item
+                      label="通知人员"
+                      name="notificationUsers"
+                      tooltip="选择在构建成功、失败或其他重要事件时需要通知的人员"
+                    >
+                      <UserSelector
+                        placeholder="选择通知人员"
+                        mode="multiple"
+                        style={{ width: '100%' }}
+                      />
+                    </Form.Item>
+                  </Card>
+
+                  <Card title="审批设置" size="small" style={{ marginBottom: '16px' }}>
+                    <Form.Item
+                      name="requireApproval"
+                      valuePropName="checked"
+                    >
+                      <Checkbox onChange={(e) => setRequireApproval(e.target.checked)}>
+                        需要审批
+                      </Checkbox>
+                    </Form.Item>
+
+                    {requireApproval && (
+                      <Form.Item
+                        label="审批人员"
+                        name="approvalUsers"
+                        rules={[{ required: requireApproval, message: '请选择审批人员' }]}
+                        tooltip="选择有权限审批此项目构建的人员"
+                      >
+                        <UserSelector
+                          placeholder="选择审批人员"
+                          mode="multiple"
+                          style={{ width: '100%' }}
+                        />
+                      </Form.Item>
+                    )}
+                  </Card>
+
+                  <Card title="构建触发器" size="small" style={{ marginBottom: '16px' }}>
+                    <Form.Item name={['buildTriggers', 'onPush']} valuePropName="checked">
+                      <Checkbox>代码推送时自动构建</Checkbox>
+                    </Form.Item>
+                    <Form.Item name={['buildTriggers', 'onPullRequest']} valuePropName="checked">
+                      <Checkbox>Pull Request时自动构建</Checkbox>
+                    </Form.Item>
+                    <Form.Item name={['buildTriggers', 'onSchedule']} valuePropName="checked">
+                      <Checkbox>定时构建</Checkbox>
+                    </Form.Item>
+                    <Form.Item
+                      label="定时表达式"
+                      name={['buildTriggers', 'scheduleExpression']}
+                      tooltip="使用Cron表达式，例如：0 2 * * * (每天凌晨2点)"
+                    >
+                      <Input placeholder="0 2 * * *" />
+                    </Form.Item>
+                  </Card>
+
+                  <Card title="构建设置" size="small">
+                    <Form.Item
+                      label="构建超时时间"
+                      name="buildTimeout"
+                      tooltip="构建任务的最大执行时间，超时后将自动终止"
+                    >
+                      <InputNumber
+                        min={1}
+                        max={480}
+                        placeholder="30"
+                        addonAfter="分钟"
+                        style={{ width: '200px' }}
+                      />
+                    </Form.Item>
                   </Card>
                 </div>
               )

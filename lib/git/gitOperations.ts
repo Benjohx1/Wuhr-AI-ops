@@ -101,9 +101,23 @@ export class GitOperations {
       switch (authType) {
         case 'token':
           if (credentials.token) {
-            // GitHub PAT格式: https://token@github.com/user/repo.git
-            urlObj.username = credentials.token
-            urlObj.password = ''
+            // 不同平台的Token认证格式
+            if (urlObj.hostname.includes('github.com')) {
+              // GitHub PAT格式: https://token@github.com/user/repo.git
+              urlObj.username = credentials.token
+              urlObj.password = ''
+              console.log('🔐 构建GitHub Token认证URL')
+            } else if (urlObj.hostname.includes('gitlab')) {
+              // GitLab Token格式: https://oauth2:token@gitlab.com/user/repo.git
+              urlObj.username = 'oauth2'
+              urlObj.password = credentials.token
+              console.log('🔐 构建GitLab Token认证URL')
+            } else {
+              // 通用Token格式
+              urlObj.username = credentials.token
+              urlObj.password = ''
+              console.log('🔐 构建通用Token认证URL')
+            }
           }
           break
           

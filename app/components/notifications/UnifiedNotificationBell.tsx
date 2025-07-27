@@ -54,10 +54,34 @@ const UnifiedNotificationBell: React.FC<UnifiedNotificationBellProps> = ({
       const response = await fetch('/api/notifications/info?limit=10&includeRead=false')
       const data = await response.json()
       
+      console.log('🔔 [通知中心] API响应:', {
+        success: data.success,
+        notificationCount: data.data?.notifications?.length || 0,
+        unreadCount: data.data?.unreadCount || 0,
+        requestUrl: '/api/notifications/info?limit=10&includeRead=false'
+      })
+
       if (data.success) {
-        setInfoNotifications(data.data.notifications || [])
+        const notifications = data.data.notifications || []
+        setInfoNotifications(notifications)
         setInfoUnreadCount(data.data.unreadCount || 0)
-        
+
+        // 详细日志：显示前3个通知的详细信息
+        if (notifications.length > 0) {
+          console.log('🔔 [通知中心] 前3个通知详情:',
+            notifications.slice(0, 3).map((n: any) => ({
+              id: n.id,
+              type: n.type,
+              title: n.title,
+              isRead: n.isRead,
+              category: n.category,
+              createdAt: n.createdAt
+            }))
+          )
+        } else {
+          console.log('🔔 [通知中心] ⚠️ 没有获取到通知数据')
+        }
+
         // 处理离线通知
         if (data.data.offlineNotifications?.length > 0) {
           console.log('📬 收到离线信息通知:', data.data.offlineNotifications.length)
@@ -76,11 +100,25 @@ const UnifiedNotificationBell: React.FC<UnifiedNotificationBellProps> = ({
       // 同时获取Jenkins审批任务和信息通知中的审批通知
       const [pendingApprovalsResponse, infoNotificationsResponse] = await Promise.all([
         fetch('/api/notifications/pending-approvals'),
-        fetch('/api/notifications/info?type=approval&limit=20&includeRead=false')
+        fetch('/api/notifications/info?limit=50&includeRead=false') // 获取所有信息通知，然后过滤
       ])
 
       const pendingApprovalsData = await pendingApprovalsResponse.json()
       const infoNotificationsData = await infoNotificationsResponse.json()
+
+      console.log('🔍 [审批通知] API响应详情:', {
+        pendingApprovals: {
+          success: pendingApprovalsData.success,
+          count: pendingApprovalsData.data?.notifications?.length || 0,
+          total: pendingApprovalsData.data?.total || 0
+        },
+        infoNotifications: {
+          success: infoNotificationsData.success,
+          count: infoNotificationsData.data?.notifications?.length || 0,
+          total: infoNotificationsData.data?.total || 0,
+          unreadCount: infoNotificationsData.data?.unreadCount || 0
+        }
+      })
 
       let allApprovalNotifications: any[] = []
       let totalUnreadCount = 0
@@ -89,12 +127,35 @@ const UnifiedNotificationBell: React.FC<UnifiedNotificationBellProps> = ({
       if (pendingApprovalsData.success) {
         allApprovalNotifications = [...(pendingApprovalsData.data.notifications || [])]
         totalUnreadCount += pendingApprovalsData.data.total || 0
+        console.log('🔍 [审批通知] Jenkins审批任务:', allApprovalNotifications.length)
       }
 
       // 添加信息通知中的审批通知
       if (infoNotificationsData.success) {
-        const approvalInfoNotifications = (infoNotificationsData.data.notifications || [])
-          .filter((n: any) => n.category === 'approval')
+        const allInfoNotifications = infoNotificationsData.data.notifications || []
+
+        console.log('🔍 [审批通知] 信息通知详情:', {
+          totalCount: allInfoNotifications.length,
+          notificationTypes: allInfoNotifications.map((n: any) => ({ id: n.id, type: n.type, title: n.title, isRead: n.isRead }))
+        })
+
+        const approvalInfoNotifications = allInfoNotifications
+          .filter((n: any) => {
+            // 检查多种审批相关的类型
+            const approvalTypes = ['deployment_approval', 'approval', 'cicd_approval']
+            const isApprovalType = approvalTypes.includes(n.type)
+            const hasApprovalAction = n.metadata && n.metadata.action === 'approval_required'
+
+            console.log(`🔍 [审批通知] 检查通知 ${n.id}:`, {
+              type: n.type,
+              isApprovalType,
+              hasApprovalAction,
+              metadata: n.metadata,
+              willInclude: isApprovalType || hasApprovalAction
+            })
+
+            return isApprovalType || hasApprovalAction
+          })
           .map((n: any) => ({
             ...n,
             // 转换为审批通知格式
@@ -104,11 +165,18 @@ const UnifiedNotificationBell: React.FC<UnifiedNotificationBellProps> = ({
             message: n.content,
             data: n.metadata || {},
             createdAt: n.createdAt,
-            canApprove: true
+            canApprove: true // 设置为可审批
           }))
 
+        console.log('🔍 [审批通知] 过滤结果:', {
+          totalNotifications: allInfoNotifications.length,
+          approvalNotifications: approvalInfoNotifications.length,
+          approvalTypes: approvalInfoNotifications.map((n: any) => n.type),
+          approvalTitles: approvalInfoNotifications.map((n: any) => n.title)
+        })
+
         allApprovalNotifications = [...allApprovalNotifications, ...approvalInfoNotifications]
-        totalUnreadCount += infoNotificationsData.data.unreadApprovalCount || 0
+        totalUnreadCount += approvalInfoNotifications.length
       }
 
       // 去重（基于ID）
@@ -155,12 +223,20 @@ const UnifiedNotificationBell: React.FC<UnifiedNotificationBellProps> = ({
       })
 
       if (response.ok) {
-        setInfoNotifications(prev => 
-          prev.map(n => 
+        setInfoNotifications(prev =>
+          prev.map(n =>
             n.id === notificationId ? { ...n, isRead: true } : n
           ).filter(n => !n.isRead)
         )
         setInfoUnreadCount(prev => Math.max(0, prev - 1))
+
+        // 触发跨组件数据同步
+        localStorage.setItem('notification_update', JSON.stringify({
+          type: 'mark_read',
+          notificationId,
+          timestamp: new Date().toISOString()
+        }))
+        window.dispatchEvent(new Event('notificationUpdate'))
       }
     } catch (error) {
       console.error('标记已读失败:', error)
@@ -170,13 +246,39 @@ const UnifiedNotificationBell: React.FC<UnifiedNotificationBellProps> = ({
   // 处理审批操作
   const handleApprovalAction = async (notification: ApprovalNotification, action: 'approve' | 'reject', comment?: string) => {
     try {
+      // 确定正确的通知ID格式
+      let notificationId = notification.id
+
+      // 如果通知的metadata中有特殊的notificationId，使用它
+      if (notification.data?.notificationId) {
+        notificationId = notification.data.notificationId
+      }
+      // 如果有approvalId，构造cicd_approval格式的ID
+      else if (notification.data?.approvalId) {
+        notificationId = `cicd_approval_${notification.data.approvalId}`
+      }
+      // 如果通知类型是部署审批相关，尝试构造格式
+      else if (notification.type?.includes('deployment') || notification.type?.includes('approval')) {
+        // 如果ID不是cicd_approval格式，尝试构造
+        if (!notificationId.startsWith('cicd_approval_')) {
+          notificationId = `cicd_approval_${notificationId}`
+        }
+      }
+
+      console.log('🔍 [审批操作] 通知信息:', {
+        originalId: notification.id,
+        finalNotificationId: notificationId,
+        notificationType: notification.type,
+        metadata: notification.data
+      })
+
       const response = await fetch('/api/notifications/approve', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          notificationId: notification.id,
+          notificationId: notificationId,
           action,
           comment
         })
@@ -186,7 +288,17 @@ const UnifiedNotificationBell: React.FC<UnifiedNotificationBellProps> = ({
       if (data.success) {
         message.success(`审批${action === 'approve' ? '通过' : '拒绝'}成功`)
         fetchApprovalNotifications() // 刷新审批通知
+        fetchInfoNotifications() // 同时刷新信息通知
+
+        // 触发跨组件数据同步
+        localStorage.setItem('notification_update', JSON.stringify({
+          type: 'approval_action',
+          action,
+          timestamp: new Date().toISOString()
+        }))
+        window.dispatchEvent(new Event('notificationUpdate'))
       } else {
+        console.error('❌ 审批操作失败:', data)
         message.error(data.error || '审批操作失败')
       }
     } catch (error) {
@@ -269,36 +381,102 @@ const UnifiedNotificationBell: React.FC<UnifiedNotificationBellProps> = ({
     if (!user) return
 
     let eventSource: EventSource | null = null
+    let reconnectAttempts = 0
+    const maxReconnectAttempts = 5
 
     const connectRealtime = () => {
-      eventSource = new EventSource('/api/notifications/realtime')
-      
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data)
+      try {
+        console.log('📡 [统一通知中心] 建立实时连接...')
+        eventSource = new EventSource('/api/notifications/realtime')
 
-          if (data.type === 'info_notification') {
-            setInfoNotifications(prev => [data.data, ...prev.slice(0, 9)])
-            setInfoUnreadCount(prev => prev + 1)
-          } else if (data.type === 'approval_update') {
-            // 审批状态更新，重新获取审批通知
-            console.log('📬 收到审批更新通知，刷新审批数据')
-            fetchApprovalNotifications()
-          }
-        } catch (error) {
-          console.error('解析实时通知失败:', error)
+        eventSource.onopen = () => {
+          console.log('📡 [统一通知中心] 实时连接已建立')
+          reconnectAttempts = 0 // 重置重连计数
         }
-      }
 
-      eventSource.onerror = () => {
-        eventSource?.close()
-        setTimeout(connectRealtime, 5000)
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+
+            if (data.type === 'connected') {
+              console.log('📡 [统一通知中心] 连接确认:', data.message)
+            } else if (data.type === 'heartbeat') {
+              // 心跳消息，保持连接活跃
+              console.log('💓 [统一通知中心] 收到心跳')
+            } else if (data.type === 'info_notification') {
+              console.log('📬 [统一通知中心] 收到信息通知:', data.data.title)
+              setInfoNotifications(prev => [data.data, ...prev.slice(0, 9)])
+              setInfoUnreadCount(prev => prev + 1)
+            } else if (data.type === 'approval_update') {
+              // 审批状态更新，重新获取审批通知
+              console.log('📬 [统一通知中心] 收到审批更新通知，刷新审批数据')
+              fetchApprovalNotifications()
+            } else if (data.type === 'deployment_status_update') {
+              // 部署状态更新通知
+              console.log('📬 [统一通知中心] 收到部署状态更新:', data.data)
+
+              // 创建状态更新通知
+              const statusNotification: InfoNotification = {
+                id: `status-${Date.now()}`,
+                type: 'deployment_status',
+                title: `部署状态更新`,
+                content: `部署任务状态已更新为: ${data.data.status}`,
+                createdAt: new Date().toISOString(),
+                isRead: false,
+                metadata: { deploymentId: data.data.deploymentId, status: data.data.status }
+              }
+
+              setInfoNotifications(prev => [statusNotification, ...prev.slice(0, 9)])
+              setInfoUnreadCount(prev => prev + 1)
+
+              // 同时刷新审批数据，因为状态可能影响审批列表
+              fetchApprovalNotifications()
+
+              // 触发部署列表刷新
+              localStorage.setItem('deployment_status_update', JSON.stringify({
+                deploymentId: data.data.deploymentId,
+                status: data.data.status,
+                timestamp: Date.now()
+              }))
+
+              // 触发storage事件（同一页面需要手动触发）
+              window.dispatchEvent(new StorageEvent('storage', {
+                key: 'deployment_status_update',
+                newValue: JSON.stringify({
+                  deploymentId: data.data.deploymentId,
+                  status: data.data.status,
+                  timestamp: Date.now()
+                })
+              }))
+            }
+          } catch (error) {
+            console.error('❌ [统一通知中心] 解析实时通知失败:', error)
+          }
+        }
+
+        eventSource.onerror = (error) => {
+          console.error('❌ [统一通知中心] 实时连接错误:', error)
+          eventSource?.close()
+
+          // 实现指数退避重连
+          if (reconnectAttempts < maxReconnectAttempts) {
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000) // 最大30秒
+            reconnectAttempts++
+            console.log(`🔄 [统一通知中心] ${delay}ms后尝试第${reconnectAttempts}次重连...`)
+            setTimeout(connectRealtime, delay)
+          } else {
+            console.error('❌ [统一通知中心] 达到最大重连次数，停止重连')
+          }
+        }
+      } catch (error) {
+        console.error('❌ [统一通知中心] 建立实时连接失败:', error)
       }
     }
 
     connectRealtime()
 
     return () => {
+      console.log('🔌 [统一通知中心] 关闭实时连接')
       eventSource?.close()
     }
   }, [user])

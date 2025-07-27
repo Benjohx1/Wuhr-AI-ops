@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
 
     // 构建Elasticsearch查询
     const esQuery = {
-      index: elkConfig.defaultIndex || 'dev-go-ope*',
+      index: elkConfig.defaultIndex || 'logs-*',
       body: {
         query: {
           bool: {
@@ -194,7 +194,7 @@ export async function GET(request: NextRequest) {
 
     // 构建聚合查询
     const aggregationQuery = {
-      index: elkConfig.defaultIndex || 'dev-go-ope*',
+      index: elkConfig.defaultIndex || 'logs-*',
       body: {
         size: 0,
         query: {

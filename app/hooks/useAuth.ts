@@ -5,12 +5,9 @@ import { useGlobalState } from '../contexts/GlobalStateContext'
 import { AuthUser } from '../types/global'
 import { LoginRequest, RegisterRequest, UpdateProfileRequest } from '../types/api'
 
-// API客户端基础配置
-const API_BASE_URL = '/api/auth'
-
-// API调用工具函数
+// API调用工具函数 - 直接使用完整的endpoint
 async function apiCall<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const response = await fetch(endpoint, {
     credentials: 'include', // 默认使用cookie认证
     headers: {
       'Content-Type': 'application/json',
@@ -49,7 +46,7 @@ export function useAuth() {
           accessToken: string
           expiresIn: number
         }
-      }>('/login', {
+      }>('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify(credentials),
       })
@@ -87,7 +84,7 @@ export function useAuth() {
           role: string
         }
         message: string
-      }>('/register', {
+      }>('/api/auth/register', {
         method: 'POST',
         body: JSON.stringify(userData),
       })
@@ -105,7 +102,7 @@ export function useAuth() {
   const logout = useCallback(async () => {
     try {
       if (auth.accessToken) {
-        await apiCall('/logout', {
+        await apiCall('/api/auth/logout', {
           method: 'POST',
           headers: getAuthHeaders(auth.accessToken),
         })
@@ -127,7 +124,7 @@ export function useAuth() {
     try {
       dispatch({ type: 'AUTH_SET_LOADING', payload: true })
 
-      const response = await apiCall<AuthUser>('/profile', {
+      const response = await apiCall<AuthUser>('/api/auth/profile', {
         method: 'PUT',
         headers: getAuthHeaders(auth.accessToken),
         body: JSON.stringify(data),
@@ -157,7 +154,7 @@ export function useAuth() {
       const response = await apiCall<{
         valid: boolean
         user?: AuthUser
-      }>('/verify', {
+      }>('/api/auth/verify', {
         method: 'GET',
         headers: getAuthHeaders(auth.accessToken),
       })
@@ -182,7 +179,7 @@ export function useAuth() {
   // 获取用户资料
   const getUserProfile = useCallback(async () => {
     try {
-      const response = await apiCall<AuthUser>('/profile', {
+      const response = await apiCall<AuthUser>('/api/auth/profile', {
         method: 'GET',
         credentials: 'include', // 使用cookie认证
       })
@@ -204,6 +201,53 @@ export function useAuth() {
     dispatch({ type: 'AUTH_SET_ERROR', payload: null })
   }, [dispatch])
 
+  // 权限检查函数
+  const hasPermission = useCallback((permission: string): boolean => {
+    if (!auth.isAuthenticated || !auth.user) return false
+    if (auth.user.role === 'admin') return true // 管理员拥有所有权限
+    return auth.permissions.includes(permission)
+  }, [auth.isAuthenticated, auth.user, auth.permissions])
+
+  const canAccessAI = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`ai:${action}`)
+  }, [hasPermission])
+
+  const canAccessServers = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`servers:${action}`)
+  }, [hasPermission])
+
+  const canAccessCICD = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`cicd:${action}`)
+  }, [hasPermission])
+
+  const canAccessApprovals = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`approvals:${action}`)
+  }, [hasPermission])
+
+  const canAccessMonitoring = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`monitoring:${action}`)
+  }, [hasPermission])
+
+  const canAccessGrafana = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`grafana:${action}`)
+  }, [hasPermission])
+
+  const canAccessNotifications = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`notifications:${action}`)
+  }, [hasPermission])
+
+  const canAccessUsers = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`users:${action}`)
+  }, [hasPermission])
+
+  const canAccessPermissions = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`permissions:${action}`)
+  }, [hasPermission])
+
+  const canAccessConfig = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`config:${action}`)
+  }, [hasPermission])
+
   return {
     // 状态
     ...auth,
@@ -222,6 +266,19 @@ export function useAuth() {
     verifySession,
     getUserProfile,
     clearError,
+
+    // 权限检查方法
+    hasPermission,
+    canAccessAI,
+    canAccessServers,
+    canAccessCICD,
+    canAccessApprovals,
+    canAccessMonitoring,
+    canAccessGrafana,
+    canAccessNotifications,
+    canAccessUsers,
+    canAccessPermissions,
+    canAccessConfig,
   }
 }
 
@@ -331,6 +388,47 @@ export function usePermissions() {
     }
   }, [auth.isAuthenticated, auth.user, checkRole, hasPermission])
 
+  // 具体权限检查函数
+  const canAccessAI = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`ai:${action}`)
+  }, [hasPermission])
+
+  const canAccessServers = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`servers:${action}`)
+  }, [hasPermission])
+
+  const canAccessCICD = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`cicd:${action}`)
+  }, [hasPermission])
+
+  const canAccessApprovals = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`approvals:${action}`)
+  }, [hasPermission])
+
+  const canAccessMonitoring = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`monitoring:${action}`)
+  }, [hasPermission])
+
+  const canAccessGrafana = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`grafana:${action}`)
+  }, [hasPermission])
+
+  const canAccessNotifications = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`notifications:${action}`)
+  }, [hasPermission])
+
+  const canAccessUsers = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`users:${action}`)
+  }, [hasPermission])
+
+  const canAccessPermissions = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`permissions:${action}`)
+  }, [hasPermission])
+
+  const canAccessConfig = useCallback((action: 'read' | 'write') => {
+    return hasPermission(`config:${action}`)
+  }, [hasPermission])
+
   return {
     // 基础权限检查
     hasPermission,
@@ -338,21 +436,34 @@ export function usePermissions() {
     hasAllPermissions,
     hasRole,
     canAccess,
-    
+
     // 增强权限检查
     checkRole,
     checkPermission,
     checkResourceAccess,
     checkOwnership,
     canExecuteAction,
-    
+
+    // 具体权限检查函数
+    canAccessAI,
+    canAccessServers,
+    canAccessCICD,
+    canAccessApprovals,
+    canAccessMonitoring,
+    canAccessGrafana,
+    canAccessNotifications,
+    canAccessUsers,
+    canAccessPermissions,
+    canAccessConfig,
+
     // 工具方法
     getAccessiblePaths,
-    
+
     // 状态信息
     permissions: auth.permissions,
     role: auth.user?.role,
     roleLevel: auth.user ? roleHierarchy[auth.user.role as keyof typeof roleHierarchy] || 0 : 0,
+    isAuthenticated: auth.isAuthenticated,
   }
 }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, useReducer, useEffect, useState, ReactNode } from 'react'
 import { GlobalState, GlobalAction, GlobalContextType, ApiKeyConfig, ModelConfig, AuthState } from '../types/global'
 
 // 默认认证状态
@@ -287,6 +287,7 @@ const STORAGE_KEY = 'wuhr-ai-ops-state'
 
 const saveToStorage = (state: GlobalState) => {
   try {
+    if (typeof window === 'undefined') return // SSR 检查
     const stateToSave = {
       theme: state.theme,
       apiKeys: state.apiKeys,
@@ -296,6 +297,7 @@ const saveToStorage = (state: GlobalState) => {
       preferences: state.preferences
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave))
+    console.log('💾 保存主题状态到localStorage:', state.theme)
   } catch (error) {
     console.error('保存状态到 localStorage 失败:', error)
   }
@@ -303,12 +305,17 @@ const saveToStorage = (state: GlobalState) => {
 
 const loadFromStorage = (): Partial<GlobalState> | null => {
   try {
+    if (typeof window === 'undefined') return null // SSR 检查
     const stored = localStorage.getItem(STORAGE_KEY)
-    return stored ? JSON.parse(stored) : null
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      console.log('🔄 从localStorage加载主题状态:', parsed.theme)
+      return parsed
+    }
   } catch (error) {
     console.error('从 localStorage 加载状态失败:', error)
-    return null
   }
+  return null
 }
 
 // Provider 组件
@@ -318,19 +325,25 @@ interface GlobalStateProviderProps {
 
 export const GlobalStateProvider: React.FC<GlobalStateProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(globalReducer, defaultState)
+  const [isInitialized, setIsInitialized] = useState(false)
 
   // 初始化时从 localStorage 加载状态
   useEffect(() => {
     const storedState = loadFromStorage()
     if (storedState) {
+      console.log('🔄 [GlobalStateProvider] 从localStorage恢复状态:', storedState)
       dispatch({ type: 'LOAD_FROM_STORAGE', payload: storedState })
     }
+    setIsInitialized(true)
   }, [])
 
-  // 状态变更时保存到 localStorage
+  // 状态变更时保存到 localStorage（但跳过初始化阶段）
   useEffect(() => {
-    saveToStorage(state)
-  }, [state])
+    if (isInitialized) {
+      saveToStorage(state)
+      console.log('💾 [GlobalStateProvider] 保存状态到localStorage:', { theme: state.theme })
+    }
+  }, [state, isInitialized])
 
   return (
     <GlobalStateContext.Provider value={{ state, dispatch }}>

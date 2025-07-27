@@ -147,14 +147,13 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString()
     })
 
-    // Set secure HTTP-only cookies
+    // Set secure HTTP-only cookies - 开发环境优化
     const cookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: false, // 开发环境下必须为false
       sameSite: 'lax' as const,
       path: '/',
-      // 在开发环境下不设置domain，允许跨IP访问
-      ...(process.env.NODE_ENV === 'production' && { domain: process.env.COOKIE_DOMAIN })
+      domain: undefined // 明确不设置domain
     }
 
     response.cookies.set('accessToken', accessToken, {

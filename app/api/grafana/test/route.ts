@@ -1,150 +1,148 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '../../../../lib/auth/apiHelpers-new'
+import { decrypt } from '../../../../lib/crypto/encryption'
 
+// POST - 测试Grafana连接
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { serverUrl, username, password, apiKey, orgId = 1 } = body
+    const authResult = await requireAuth(request)
+    if (!authResult.success) {
+      return authResult.response
+    }
 
-    console.log('🔗 测试Grafana连接:', {
-      serverUrl,
-      username,
-      orgId,
-      hasPassword: !!password,
-      hasApiKey: !!apiKey
+    const body = await request.json()
+    const { 
+      host, 
+      port = 3000, 
+      protocol = 'http',
+      username, 
+      password, 
+      apiKey,
+      orgId = 1
+    } = body
+
+    if (!host) {
+      return NextResponse.json({
+        success: false,
+        error: '请提供Grafana服务器地址'
+      }, { status: 400 })
+    }
+
+    const baseUrl = `${protocol}://${host}:${port}`
+    
+    // 构建认证头
+    let authHeaders: Record<string, string> = {}
+    
+    if (apiKey) {
+      // 使用API Key认证
+      authHeaders['Authorization'] = `Bearer ${apiKey}`
+    } else if (username && password) {
+      // 使用基本认证
+      const credentials = Buffer.from(`${username}:${password}`).toString('base64')
+      authHeaders['Authorization'] = `Basic ${credentials}`
+    }
+
+    // 测试连接 - 获取Grafana健康状态
+    console.log(`🔍 测试Grafana连接: ${baseUrl}`)
+    
+    const healthResponse = await fetch(`${baseUrl}/api/health`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders
+      },
+      signal: AbortSignal.timeout(10000) // 10秒超时
     })
 
-    // 验证必需参数
-    if (!serverUrl) {
+    if (!healthResponse.ok) {
+      console.log(`❌ Grafana健康检查失败: ${healthResponse.status}`)
       return NextResponse.json({
         success: false,
-        error: '服务器地址不能为空'
+        error: `连接失败: HTTP ${healthResponse.status}`,
+        details: `无法连接到Grafana服务器 ${baseUrl}`
       }, { status: 400 })
     }
 
-    if (!username && !apiKey) {
-      return NextResponse.json({
-        success: false,
-        error: '用户名或API密钥至少需要提供一个'
-      }, { status: 400 })
-    }
+    const healthData = await healthResponse.json()
+    console.log(`✅ Grafana健康检查成功:`, healthData)
 
-    // 构建请求头
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    }
-
-    // 设置认证
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`
-    } else if (username && password) {
-      const auth = Buffer.from(`${username}:${password}`).toString('base64')
-      headers['Authorization'] = `Basic ${auth}`
-    }
-
-    // 测试连接 - 获取组织信息
-    const testUrl = `${serverUrl.replace(/\/$/, '')}/api/org`
-    
-    console.log('🔗 发送测试请求到:', testUrl)
-
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10秒超时
-
-    try {
-      const response = await fetch(testUrl, {
-        method: 'GET',
-        headers,
-        signal: controller.signal
-      })
-
-      clearTimeout(timeoutId)
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('Grafana API错误:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorText
-        })
-
-        if (response.status === 401) {
-          return NextResponse.json({
-            success: false,
-            error: '认证失败，请检查用户名密码或API密钥'
-          }, { status: 400 })
-        } else if (response.status === 403) {
-          return NextResponse.json({
-            success: false,
-            error: '权限不足，请检查用户权限'
-          }, { status: 400 })
-        } else {
-          return NextResponse.json({
-            success: false,
-            error: `Grafana服务器错误: ${response.status} ${response.statusText}`
-          }, { status: 400 })
-        }
-      }
-
-      const orgData = await response.json()
-      
-      console.log('✅ Grafana连接测试成功:', orgData)
-
-      // 尝试获取Grafana版本信息
-      let versionInfo = ''
+    // 获取组织信息（如果有认证）
+    let orgInfo = null
+    if (authHeaders['Authorization']) {
       try {
-        const healthResponse = await fetch(`${serverUrl.replace(/\/$/, '')}/api/health`, {
+        const orgResponse = await fetch(`${baseUrl}/api/org`, {
           method: 'GET',
-          headers,
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeaders
+          },
           signal: AbortSignal.timeout(5000)
         })
 
-        if (healthResponse.ok) {
-          const healthData = await healthResponse.json()
-          versionInfo = healthData.version || ''
+        if (orgResponse.ok) {
+          orgInfo = await orgResponse.json()
+          console.log(`✅ 获取组织信息成功:`, orgInfo)
         }
-      } catch (error) {
-        console.log('获取版本信息失败:', error)
-      }
-
-      return NextResponse.json({
-        success: true,
-        message: 'Grafana连接测试成功',
-        data: {
-          organization: orgData,
-          version: versionInfo,
-          serverUrl,
-          connectionTime: new Date().toISOString()
-        }
-      })
-
-    } catch (error) {
-      clearTimeout(timeoutId)
-      
-      if (error instanceof Error) {
-        if (error.name === 'AbortError') {
-          return NextResponse.json({
-            success: false,
-            error: '连接超时，请检查服务器地址和网络连接'
-          }, { status: 400 })
-        } else {
-          console.error('Grafana连接错误:', error)
-          return NextResponse.json({
-            success: false,
-            error: `连接失败: ${error.message}`
-          }, { status: 400 })
-        }
-      } else {
-        return NextResponse.json({
-          success: false,
-          error: '未知连接错误'
-        }, { status: 400 })
+      } catch (orgError) {
+        console.log(`⚠️ 获取组织信息失败:`, orgError)
       }
     }
 
+    // 获取数据源列表（如果有认证）
+    let datasources = []
+    if (authHeaders['Authorization']) {
+      try {
+        const dsResponse = await fetch(`${baseUrl}/api/datasources`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeaders
+          },
+          signal: AbortSignal.timeout(5000)
+        })
+
+        if (dsResponse.ok) {
+          datasources = await dsResponse.json()
+          console.log(`✅ 获取数据源列表成功: ${datasources.length} 个数据源`)
+        }
+      } catch (dsError) {
+        console.log(`⚠️ 获取数据源失败:`, dsError)
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: '连接成功！',
+      data: {
+        health: healthData,
+        organization: orgInfo,
+        datasourceCount: datasources.length,
+        version: healthData.version || 'Unknown',
+        database: healthData.database || 'Unknown'
+      },
+      timestamp: new Date().toISOString()
+    })
+
   } catch (error) {
     console.error('测试Grafana连接失败:', error)
+    
+    let errorMessage = '连接测试失败'
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        errorMessage = '连接超时，请检查服务器地址和网络连接'
+      } else if (error.message.includes('ECONNREFUSED')) {
+        errorMessage = '连接被拒绝，请检查Grafana服务器是否运行'
+      } else if (error.message.includes('ENOTFOUND')) {
+        errorMessage = '无法解析主机名，请检查服务器地址'
+      } else {
+        errorMessage = error.message
+      }
+    }
+
     return NextResponse.json({
       success: false,
-      error: '测试连接失败'
+      error: errorMessage,
+      timestamp: new Date().toISOString()
     }, { status: 500 })
   }
 }

@@ -11,7 +11,7 @@ export interface ProjectTemplate {
     repositoryType: string
     branch: string
     buildScript: string
-    deployScript: string
+    testScript?: string
     environment: 'dev' | 'test' | 'prod'
     dockerFile?: string
     packageManager?: 'npm' | 'yarn' | 'pnpm' | 'maven' | 'gradle' | 'pip'
@@ -47,7 +47,7 @@ export interface CreateProjectWizardData {
 
   // 第三步：构建配置
   buildScript?: string
-  deployScript?: string
+  testScript?: string
   environment: 'dev' | 'test' | 'prod'
   serverId?: string // 关联的主机ID
   dockerFile?: string
@@ -81,7 +81,7 @@ export const PROJECT_TEMPLATES: ProjectTemplate[] = [
       repositoryType: 'git',
       branch: 'main',
       buildScript: 'npm install && npm run build',
-      deployScript: 'npm run deploy',
+
       environment: 'dev',
       packageManager: 'npm'
     },
@@ -99,7 +99,7 @@ export const PROJECT_TEMPLATES: ProjectTemplate[] = [
       repositoryType: 'git',
       branch: 'main',
       buildScript: 'npm install && npm run build',
-      deployScript: 'npm run deploy',
+
       environment: 'dev',
       packageManager: 'npm'
     },
@@ -117,7 +117,7 @@ export const PROJECT_TEMPLATES: ProjectTemplate[] = [
       repositoryType: 'git',
       branch: 'main',
       buildScript: 'npm install && npm run build',
-      deployScript: 'npm start',
+
       environment: 'dev',
       packageManager: 'npm'
     },
@@ -135,7 +135,7 @@ export const PROJECT_TEMPLATES: ProjectTemplate[] = [
       repositoryType: 'git',
       branch: 'main',
       buildScript: 'npm install',
-      deployScript: 'npm start',
+
       environment: 'dev',
       packageManager: 'npm'
     },
@@ -153,7 +153,7 @@ export const PROJECT_TEMPLATES: ProjectTemplate[] = [
       repositoryType: 'git',
       branch: 'main',
       buildScript: './mvnw clean package',
-      deployScript: 'java -jar target/*.jar',
+
       environment: 'dev',
       packageManager: 'maven'
     },
@@ -171,7 +171,7 @@ export const PROJECT_TEMPLATES: ProjectTemplate[] = [
       repositoryType: 'git',
       branch: 'main',
       buildScript: 'pip install -r requirements.txt',
-      deployScript: 'python app.py',
+
       environment: 'dev',
       packageManager: 'pip'
     },
@@ -189,7 +189,7 @@ export const PROJECT_TEMPLATES: ProjectTemplate[] = [
       repositoryType: 'git',
       branch: 'main',
       buildScript: 'docker build -t app .',
-      deployScript: 'docker run -p 3000:3000 app',
+
       environment: 'dev',
       dockerFile: 'Dockerfile'
     },
@@ -207,7 +207,7 @@ export const PROJECT_TEMPLATES: ProjectTemplate[] = [
       repositoryType: 'git',
       branch: 'main',
       buildScript: 'docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} .\ndocker push ${IMAGE_NAME}:${BUILD_NUMBER}',
-      deployScript: 'kubectl apply -f k8s/\nkubectl set image deployment/app app=${IMAGE_NAME}:${BUILD_NUMBER}\nkubectl rollout status deployment/app',
+
       environment: 'dev',
       packageManager: 'npm',
       dockerFile: `FROM node:16-alpine
@@ -232,7 +232,7 @@ CMD ["npm", "start"]`
       repositoryType: 'git',
       branch: 'main',
       buildScript: '',
-      deployScript: '',
+
       environment: 'dev'
     },
     requirements: [],

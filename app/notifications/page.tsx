@@ -18,6 +18,7 @@ import {
   Badge,
   Tooltip,
   Empty,
+  Modal,
   Spin,
   Row,
   Col,
@@ -50,7 +51,7 @@ const NotificationsPage: React.FC = () => {
 
   const canRead = hasPermission('notifications:read')
   const canWrite = hasPermission('notifications:write')
-  const [activeTab, setActiveTab] = useState('unread')
+  const [activeTab, setActiveTab] = useState('read')
   const [notifications, setNotifications] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [total, setTotal] = useState(0)
@@ -98,7 +99,14 @@ const NotificationsPage: React.FC = () => {
 
       console.log('📋 [通知管理页面] 请求参数:', params.toString())
 
-      const response = await fetch(`/api/notifications/info?${params.toString()}`)
+      // 添加缓存控制，确保获取最新数据
+      const response = await fetch(`/api/notifications/info?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      })
       const data = await response.json()
 
       console.log('📋 [通知管理页面] API响应:', {
@@ -107,8 +115,27 @@ const NotificationsPage: React.FC = () => {
         dataKeys: Object.keys(data.data || {}),
         notificationCount: data.data?.notifications?.length || 0,
         total: data.data?.total || 0,
-        unreadCount: data.data?.unreadCount || 0
+        unreadCount: data.data?.unreadCount || 0,
+        activeTab,
+        includeRead,
+        requestUrl: `/api/notifications/info?${params.toString()}`
       })
+
+      // 详细日志：显示前3个通知的详细信息
+      if (data.success && data.data?.notifications?.length > 0) {
+        console.log('📋 [通知管理页面] 前3个通知详情:',
+          data.data.notifications.slice(0, 3).map((n: any) => ({
+            id: n.id,
+            type: n.type,
+            title: n.title,
+            isRead: n.isRead,
+            category: n.category,
+            createdAt: n.createdAt
+          }))
+        )
+      } else {
+        console.log('📋 [通知管理页面] ⚠️ 没有获取到通知数据')
+      }
 
       if (data.success) {
         const notifications = data.data.notifications || []
@@ -243,8 +270,16 @@ const NotificationsPage: React.FC = () => {
   // 处理通知详情查看
   const handleViewNotificationDetail = (record: any) => {
     try {
+      console.log('🔍 查看通知详情:', record)
+
+      // 先标记为已读（如果是未读通知）
+      if (!record.isRead) {
+        markAsRead([record.id])
+      }
+
       // 如果有actionUrl，使用内部路由导航
-      if (record.actionUrl) {
+      if (record.actionUrl && record.actionUrl.trim()) {
+        console.log('🔗 跳转到:', record.actionUrl)
         // 确保是内部路由
         if (record.actionUrl.startsWith('/')) {
           router.push(record.actionUrl)
@@ -253,11 +288,31 @@ const NotificationsPage: React.FC = () => {
           window.open(record.actionUrl, '_blank')
         }
       } else {
-        // 如果没有actionUrl，显示通知详情
-        message.info('通知详情：' + record.content)
+        // 如果没有actionUrl，显示通知详情模态框
+        console.log('📋 显示通知详情模态框')
+        Modal.info({
+          title: record.title || '通知详情',
+          content: (
+            <div>
+              <p><strong>类型：</strong>{record.type}</p>
+              <p><strong>内容：</strong>{record.content}</p>
+              <p><strong>创建时间：</strong>{new Date(record.createdAt).toLocaleString('zh-CN')}</p>
+              {record.metadata && (
+                <div>
+                  <p><strong>附加信息：</strong></p>
+                  <pre style={{ background: '#f5f5f5', padding: '8px', borderRadius: '4px', fontSize: '12px' }}>
+                    {JSON.stringify(record.metadata, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          ),
+          width: 600,
+          okText: '确定'
+        })
       }
     } catch (error) {
-      console.error('查看通知详情失败:', error)
+      console.error('❌ 查看通知详情失败:', error)
       message.error('查看通知详情失败')
     }
   }
@@ -302,10 +357,59 @@ const NotificationsPage: React.FC = () => {
     })
   }
 
-  // 初始加载
+  // 延迟加载：仅在用户访问通知页面时才加载数据
   useEffect(() => {
     if (user) {
+      console.log('📋 [通知管理页面] 用户访问页面，开始延迟加载通知数据...')
+      // 延迟100ms加载，避免阻塞页面渲染
+      const timer = setTimeout(() => {
+        loadNotifications()
+      }, 100)
+
+      return () => clearTimeout(timer)
+    }
+  }, [user])
+
+  // 监听标签页切换，重新加载数据
+  useEffect(() => {
+    if (user) {
+      console.log('📋 [通知管理页面] 标签页切换:', activeTab)
       loadNotifications()
+    }
+  }, [activeTab, user])
+
+  // 实时同步机制 - 监听通知中心的数据更新
+  useEffect(() => {
+    if (!user) return
+
+    // 监听localStorage变化，实现跨组件数据同步
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'notification_update') {
+        console.log('🔄 [通知管理页面] 收到通知更新，刷新数据')
+        loadNotifications()
+        // 清除通知标记
+        localStorage.removeItem('notification_update')
+      }
+    }
+
+    // 监听自定义事件，实现同页面组件间同步
+    const handleNotificationUpdate = () => {
+      console.log('🔄 [通知管理页面] 收到通知更新事件，刷新数据')
+      loadNotifications()
+    }
+
+    window.addEventListener('storage', handleStorageChange)
+    window.addEventListener('notificationUpdate', handleNotificationUpdate)
+
+    // 定期刷新数据（每30秒）
+    const refreshInterval = setInterval(() => {
+      loadNotifications()
+    }, 30000)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('notificationUpdate', handleNotificationUpdate)
+      clearInterval(refreshInterval)
     }
   }, [user])
 
@@ -473,63 +577,56 @@ const NotificationsPage: React.FC = () => {
         </div>
 
         {/* 统计卡片 */}
-        {stats && (
-          <Row gutter={[16, 16]} style={{ marginBottom: '20px' }}>
-            <Col xs={12} sm={12} md={6} lg={6} xl={6}>
-              <Card className="glass-card" size="small">
-                <Statistic
-                  title="未读通知"
-                  value={stats.unread}
-                  prefix={<Badge status="processing" />}
-                  valueStyle={{ color: '#1890ff', fontSize: '20px' }}
-                />
-              </Card>
-            </Col>
-            <Col xs={12} sm={12} md={6} lg={6} xl={6}>
-              <Card className="glass-card" size="small">
-                <Statistic
-                  title="已读通知"
-                  value={stats.read}
-                  prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
-                  valueStyle={{ color: '#52c41a', fontSize: '20px' }}
-                />
-              </Card>
-            </Col>
-            <Col xs={12} sm={12} md={6} lg={6} xl={6}>
-              <Card className="glass-card" size="small">
-                <Statistic
-                  title="今日通知"
-                  value={stats.todayCount}
-                  prefix={<ClockCircleOutlined style={{ color: '#722ed1' }} />}
-                  valueStyle={{ color: '#722ed1', fontSize: '20px' }}
-                />
-              </Card>
-            </Col>
-            <Col xs={12} sm={12} md={6} lg={6} xl={6}>
-              <Card className="glass-card" size="small">
-                <Statistic
-                  title="通知总数"
-                  value={stats.total}
-                  prefix={<BellOutlined style={{ color: '#fa8c16' }} />}
-                  valueStyle={{ color: '#fa8c16', fontSize: '20px' }}
-                />
-              </Card>
-            </Col>
-          </Row>
-        )}
+        <Row gutter={[16, 16]} style={{ marginBottom: '20px' }}>
+          <Col xs={12} sm={12} md={6} lg={6} xl={6}>
+            <Card className="glass-card" size="small">
+              <Statistic
+                title="未读通知"
+                value={stats?.unread || 0}
+                prefix={<Badge status="processing" />}
+                valueStyle={{ color: '#1890ff', fontSize: '20px' }}
+                loading={!stats}
+              />
+            </Card>
+          </Col>
+          <Col xs={12} sm={12} md={6} lg={6} xl={6}>
+            <Card className="glass-card" size="small">
+              <Statistic
+                title="已读通知"
+                value={stats?.read || 0}
+                prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
+                valueStyle={{ color: '#52c41a', fontSize: '20px' }}
+                loading={!stats}
+              />
+            </Card>
+          </Col>
+          <Col xs={12} sm={12} md={6} lg={6} xl={6}>
+            <Card className="glass-card" size="small">
+              <Statistic
+                title="今日通知"
+                value={stats?.todayCount || 0}
+                prefix={<ClockCircleOutlined style={{ color: '#722ed1' }} />}
+                valueStyle={{ color: '#722ed1', fontSize: '20px' }}
+                loading={!stats}
+              />
+            </Card>
+          </Col>
+          <Col xs={12} sm={12} md={6} lg={6} xl={6}>
+            <Card className="glass-card" size="small">
+              <Statistic
+                title="通知总数"
+                value={stats?.total || 0}
+                prefix={<BellOutlined style={{ color: '#fa8c16' }} />}
+                valueStyle={{ color: '#fa8c16', fontSize: '20px' }}
+                loading={!stats}
+              />
+            </Card>
+          </Col>
+        </Row>
 
         <Card className="glass-card" style={{ overflow: 'hidden' }}>
           <div style={{ marginBottom: '16px' }}>
             <Tabs activeKey={activeTab} onChange={handleTabChange}>
-              <TabPane
-                tab={
-                  <span>
-                    <Badge status="processing" />
-                    未读通知 {unreadCount > 0 && `(${unreadCount})`}
-                  </span>
-                }
-                key="unread"
-              />
               <TabPane
                 tab={
                   <span>
@@ -538,6 +635,15 @@ const NotificationsPage: React.FC = () => {
                   </span>
                 }
                 key="read"
+              />
+              <TabPane
+                tab={
+                  <span>
+                    <Badge status="processing" />
+                    未读通知 {unreadCount > 0 && `(${unreadCount})`}
+                  </span>
+                }
+                key="unread"
               />
               <TabPane
                 tab={
@@ -639,6 +745,13 @@ const NotificationsPage: React.FC = () => {
             rowKey="id"
             loading={loading}
             scroll={{ x: 1050 }} // 设置水平滚动，确保内容不会溢出
+            onRow={(record) => ({
+              onClick: () => {
+                // 点击行查看通知详情
+                handleViewNotificationDetail(record)
+              },
+              style: { cursor: 'pointer' }
+            })}
             pagination={{
               current: currentPage,
               pageSize,

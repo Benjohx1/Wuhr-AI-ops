@@ -1,283 +1,321 @@
-'use client';
+'use client'
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useEffect } from 'react'
 import {
-  Row,
-  Col,
   Card,
   Button,
-  Space,
-  Typography,
+  Table,
+  Modal,
+  Form,
+  Input,
   Select,
   Switch,
-  Input,
-  Form,
-  Modal,
   message,
+  Space,
+  Tag,
+  Tooltip,
+  Row,
+  Col,
+  Statistic,
   Alert,
   Divider,
-  Tooltip,
-  Spin
-} from 'antd';
+  Typography
+} from 'antd'
 import {
-  ReloadOutlined,
-  PlayCircleOutlined,
-  PauseCircleOutlined,
   SettingOutlined,
-  DashboardOutlined,
+  EyeOutlined,
+  DeleteOutlined,
+  PlusOutlined,
+  ReloadOutlined,
   MonitorOutlined,
-  LinkOutlined,
-  ExpandOutlined,
-  ExclamationCircleOutlined,
+  DashboardOutlined,
+  ApiOutlined
+} from '@ant-design/icons'
+import { useAuth } from '../hooks/useAuth'
+import { useGlobalState } from '../contexts/GlobalStateContext'
+import MainLayout from '../components/layout/MainLayout'
 
-} from '@ant-design/icons';
-import MainLayout from '../components/layout/MainLayout';
-import { useTheme } from '../hooks/useGlobalState';
-import { apiClient } from '../utils/apiClient';
-
-const { Title, Text } = Typography;
-const { Option } = Select;
-
-interface GrafanaDashboard {
-  id: string;
-  uid?: string;
-  name: string;
-  url: string;
-  description?: string;
-  category: 'system' | 'application' | 'network' | 'custom';
-  tags?: string[];
-  starred?: boolean;
-  custom?: boolean;
-}
+const { Title, Text } = Typography
+const { Option } = Select
 
 interface GrafanaConfig {
-  serverUrl: string;
-  username: string;
-  password: string;
-  apiKey: string;
-  orgId: number;
-  enabled: boolean;
-  dashboards: GrafanaDashboard[];
+  id: string
+  name: string
+  host: string
+  port: number
+  protocol: string
+  username?: string
+  orgId: number
+  isActive: boolean
+  description?: string
+  tags?: string[]
+  createdAt: string
+  updatedAt: string
 }
 
-export default function MonitorPage() {
-  const { isDark } = useTheme();
-  const [dashboards, setDashboards] = useState<GrafanaDashboard[]>([]);
-  const [currentDashboard, setCurrentDashboard] = useState<GrafanaDashboard | null>(null);
-  const [isAutoRefresh, setIsAutoRefresh] = useState(true);
-  const [refreshInterval, setRefreshInterval] = useState('5s');
-  const [configModalVisible, setConfigModalVisible] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [grafanaConfig, setGrafanaConfig] = useState<GrafanaConfig | null>(null);
-  const [isConfigured, setIsConfigured] = useState(false);
-  const [form] = Form.useForm();
+interface Dashboard {
+  id: number
+  uid: string
+  title: string
+  uri: string
+  url: string
+  tags: string[]
+  isStarred: boolean
+  folderId: number
+  folderTitle: string
+}
 
-  // 获取Grafana配置
-  const fetchGrafanaConfig = useCallback(async () => {
+export default function GrafanaMonitorPage() {
+  const { user } = useAuth()
+  const { state } = useGlobalState()
+  const isDark = state.theme === 'dark'
+  
+  // 状态管理
+  const [configs, setConfigs] = useState<GrafanaConfig[]>([])
+  const [activeConfig, setActiveConfig] = useState<GrafanaConfig | null>(null)
+  const [dashboards, setDashboards] = useState<Dashboard[]>([])
+  const [dashboardsByFolder, setDashboardsByFolder] = useState<Record<string, Dashboard[]>>({})
+  
+  // 加载状态
+  const [configsLoading, setConfigsLoading] = useState(false)
+  const [dashboardsLoading, setDashboardsLoading] = useState(false)
+  const [testLoading, setTestLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  
+  // 模态框状态
+  const [configModalVisible, setConfigModalVisible] = useState(false)
+  const [editingConfig, setEditingConfig] = useState<GrafanaConfig | null>(null)
+  const [testResult, setTestResult] = useState<any>(null)
+  
+  // 表单
+  const [configForm] = Form.useForm()
+
+  // 权限检查
+  const canWrite = user?.role === 'admin' || user?.permissions?.includes('grafana:write')
+  const canRead = user?.role === 'admin' || user?.permissions?.includes('grafana:read') || canWrite
+
+  // 调试信息
+  console.log('🔍 用户权限调试:', {
+    user: user?.email,
+    role: user?.role,
+    permissions: user?.permissions,
+    canWrite,
+    canRead
+  })
+
+  // 加载配置列表
+  const loadConfigs = async () => {
+    if (!canRead) return
+    
+    setConfigsLoading(true)
     try {
-      const response = await apiClient.get('/api/grafana/config')
-      const data = response.data as any
-      if (data.success) {
-        setGrafanaConfig(data.data.config)
-        setIsConfigured(data.data.isConfigured)
-        return data.data.config
+      const response = await fetch('/api/grafana/configs', {
+        credentials: 'include'
+      })
+      
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success) {
+          setConfigs(result.configs)
+          
+          // 设置活跃配置
+          const active = result.configs.find((c: GrafanaConfig) => c.isActive)
+          if (active) {
+            setActiveConfig(active)
+            loadDashboards(active.id)
+          }
+        }
       }
     } catch (error) {
-      console.error('获取Grafana配置失败:', error)
-      message.error('获取Grafana配置失败')
-    }
-    return null
-  }, [])
-
-  // 获取仪表板列表
-  const fetchDashboards = useCallback(async () => {
-    try {
-      const response = await apiClient.get('/api/grafana/dashboards')
-      const data = response.data as any
-      if (data.success) {
-        const dashboardList = data.data.dashboards
-        setDashboards(dashboardList)
-        if (dashboardList.length > 0 && !currentDashboard) {
-          setCurrentDashboard(dashboardList[0])
-        }
-        if (data.data.warning) {
-          message.warning(data.data.warning)
-        }
-      }
-    } catch (error) {
-      console.error('获取仪表板列表失败:', error)
-      // 如果API失败，使用默认配置
-      const defaultDashboards: GrafanaDashboard[] = [
-        {
-          id: 'system-overview',
-          name: '系统概览',
-          url: 'http://localhost:3000/d/system-overview?orgId=1&kiosk=1',
-          description: '服务器CPU、内存、磁盘、网络等基础指标监控',
-          category: 'system'
-        }
-      ]
-      setDashboards(defaultDashboards)
-      if (!currentDashboard) {
-        setCurrentDashboard(defaultDashboards[0])
-      }
+      console.error('加载Grafana配置失败:', error)
+      message.error('加载配置失败')
     } finally {
-      setLoading(false)
+      setConfigsLoading(false)
     }
-  }, [currentDashboard])
-
-  // Grafana配置已移至独立页面
-
-  // 初始化数据
-  useEffect(() => {
-    const initData = async () => {
-      setLoading(true)
-      const config = await fetchGrafanaConfig()
-      if (config && config.enabled) {
-        await fetchDashboards()
-      } else {
-        setLoading(false)
-      }
-    }
-    initData()
-  }, [fetchGrafanaConfig, fetchDashboards])
-
-  // 生成带参数的Grafana URL
-  const getGrafanaUrl = useCallback((dashboard: GrafanaDashboard) => {
-    const url = new URL(dashboard.url);
-    
-    // 添加主题参数
-    url.searchParams.set('theme', isDark ? 'dark' : 'light');
-    
-    // 添加刷新间隔
-    if (isAutoRefresh) {
-      url.searchParams.set('refresh', refreshInterval);
-    }
-    
-    // 确保kiosk模式（隐藏Grafana导航栏）
-    url.searchParams.set('kiosk', '1');
-    
-    return url.toString();
-  }, [isDark, isAutoRefresh, refreshInterval]);
-
-  // 处理仪表板切换
-  const handleDashboardChange = useCallback((dashboardId: string) => {
-    const dashboard = dashboards.find(d => d.id === dashboardId);
-    if (dashboard) {
-      setCurrentDashboard(dashboard);
-      message.success(`已切换到 ${dashboard.name}`);
-    }
-  }, [dashboards]);
-
-  // 处理自动刷新切换
-  const handleAutoRefreshToggle = useCallback((enabled: boolean) => {
-    setIsAutoRefresh(enabled);
-    message.success(enabled ? '已启用自动刷新' : '已停用自动刷新');
-  }, []);
-
-  // 处理刷新间隔改变
-  const handleRefreshIntervalChange = useCallback((interval: string) => {
-    setRefreshInterval(interval);
-    message.success(`刷新间隔已设置为 ${interval}`);
-  }, []);
-
-  // 手动刷新iframe
-  const handleRefresh = useCallback(() => {
-    const iframe = document.getElementById('grafana-iframe') as HTMLIFrameElement;
-    if (iframe) {
-      iframe.src = iframe.src;
-      message.success('仪表板已刷新');
-    }
-  }, []);
-
-  // 在新窗口打开Grafana
-  const openInNewWindow = useCallback(() => {
-    if (!currentDashboard) return;
-    const url = currentDashboard.url.replace('&kiosk=1', '');
-    window.open(url, '_blank');
-  }, [currentDashboard]);
-
-  // 保存自定义仪表板
-  const handleSaveCustomDashboard = useCallback((values: any) => {
-    const newDashboard: GrafanaDashboard = {
-      id: `custom-${Date.now()}`,
-      name: values.name,
-      url: values.url,
-      description: values.description,
-      category: 'custom'
-    };
-
-    setDashboards(prev => [...prev, newDashboard]);
-    setConfigModalVisible(false);
-    form.resetFields();
-    message.success('自定义仪表板已保存');
-  }, [form]);
-
-  // Grafana配置功能已移至独立页面 /config/grafana
-
-
-
-  // 按类别分组的仪表板
-  const dashboardsByCategory = dashboards.reduce((acc, dashboard) => {
-    if (!acc[dashboard.category]) {
-      acc[dashboard.category] = [];
-    }
-    acc[dashboard.category].push(dashboard);
-    return acc;
-  }, {} as Record<string, GrafanaDashboard[]>);
-
-  const categoryNames = {
-    system: '系统监控',
-    application: '应用监控', 
-    network: '网络监控',
-    custom: '自定义'
-  };
-
-  // 如果正在加载，显示加载状态
-  if (loading) {
-    return (
-      <MainLayout>
-        <div style={{ padding: '24px', textAlign: 'center' }}>
-          <Spin size="large" />
-          <div style={{ marginTop: '16px' }}>
-            <Text>正在加载Grafana配置...</Text>
-          </div>
-        </div>
-      </MainLayout>
-    )
   }
 
-  // 如果未配置Grafana，显示配置提示
-  if (!isConfigured || !currentDashboard) {
+  // 加载仪表板列表
+  const loadDashboards = async (configId: string) => {
+    setDashboardsLoading(true)
+    try {
+      const response = await fetch(`/api/grafana/dashboards?configId=${configId}`, {
+        credentials: 'include'
+      })
+      
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success) {
+          setDashboards(result.data.dashboards)
+          setDashboardsByFolder(result.data.dashboardsByFolder)
+        } else {
+          message.error(`加载仪表板失败: ${result.error}`)
+        }
+      }
+    } catch (error) {
+      console.error('加载仪表板失败:', error)
+      message.error('加载仪表板失败')
+    } finally {
+      setDashboardsLoading(false)
+    }
+  }
+
+  // 测试连接
+  const testConnection = async () => {
+    setTestLoading(true)
+    setTestResult(null)
+    
+    try {
+      const values = configForm.getFieldsValue()
+      const response = await fetch('/api/grafana/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
+        credentials: 'include'
+      })
+      
+      const result = await response.json()
+      setTestResult(result)
+      
+      if (result.success) {
+        message.success('连接测试成功！')
+      } else {
+        message.error(`连接测试失败: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('测试连接失败:', error)
+      message.error('测试连接时发生错误')
+    } finally {
+      setTestLoading(false)
+    }
+  }
+
+  // 保存配置
+  const saveConfig = async (values: any) => {
+    if (saving) return
+    
+    setSaving(true)
+    try {
+      const config = {
+        ...values,
+        tags: values.tags ? values.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
+        id: editingConfig?.id
+      }
+
+      const response = await fetch('/api/grafana/configs', {
+        method: editingConfig ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+        credentials: 'include'
+      })
+
+      if (response.ok) {
+        message.success(`${editingConfig ? '更新' : '创建'}Grafana配置成功`)
+        setConfigModalVisible(false)
+        setEditingConfig(null)
+        configForm.resetFields()
+        setTestResult(null)
+        await loadConfigs()
+      } else {
+        const error = await response.json()
+        message.error(`保存配置失败: ${error.error}`)
+      }
+    } catch (error) {
+      console.error('保存配置失败:', error)
+      message.error('保存配置时发生错误')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // 切换配置
+  const switchConfig = async (configId: string) => {
+    const config = configs.find(c => c.id === configId)
+    if (config) {
+      setActiveConfig(config)
+      await loadDashboards(configId)
+    }
+  }
+
+  // 编辑配置
+  const editConfig = (config: GrafanaConfig) => {
+    setEditingConfig(config)
+    setConfigModalVisible(true)
+    configForm.setFieldsValue({
+      name: config.name,
+      host: config.host,
+      port: config.port,
+      protocol: config.protocol,
+      username: config.username,
+      password: '***',
+      apiKey: '***',
+      orgId: config.orgId,
+      isActive: config.isActive,
+      description: config.description,
+      tags: config.tags?.join(', ') || ''
+    })
+  }
+
+  // 删除配置
+  const deleteConfig = async (configId: string) => {
+    try {
+      const response = await fetch(`/api/grafana/configs?id=${configId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        message.success('Grafana配置删除成功')
+        await loadConfigs()
+        if (activeConfig?.id === configId) {
+          setActiveConfig(null)
+          setDashboards([])
+          setDashboardsByFolder({})
+        }
+      } else {
+        message.error(`删除配置失败: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('删除配置失败:', error)
+      message.error('删除配置时发生错误')
+    }
+  }
+
+  // 显示删除确认
+  const showDeleteConfirm = (config: GrafanaConfig) => {
+    Modal.confirm({
+      title: '确认删除配置',
+      content: (
+        <div>
+          <p>您确定要删除Grafana配置 <strong>"{config.name}"</strong> 吗？</p>
+          <p style={{ color: '#ff4d4f', fontSize: '14px' }}>
+            ⚠️ 此操作不可撤销，删除后将无法恢复该配置。
+          </p>
+        </div>
+      ),
+      okText: '确认删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => deleteConfig(config.id),
+    })
+  }
+
+  // 页面加载时获取配置
+  useEffect(() => {
+    loadConfigs()
+  }, [canRead])
+
+  if (!canRead) {
     return (
       <MainLayout>
         <div style={{ padding: '24px' }}>
-          <Card>
-            <div style={{ textAlign: 'center', padding: '48px' }}>
-              <ExclamationCircleOutlined style={{ fontSize: '48px', color: '#faad14', marginBottom: '16px' }} />
-              <Title level={3}>Grafana 未配置</Title>
-              <Text type="secondary" style={{ display: 'block', marginBottom: '24px' }}>
-                请先配置Grafana服务器连接信息，然后才能查看监控仪表板
-              </Text>
-              <Space direction="vertical" size="middle">
-                <Button
-                  type="primary"
-                  icon={<SettingOutlined />}
-                  size="large"
-                  onClick={() => {
-                    console.log('🔧 跳转到Grafana配置页面')
-                    window.location.href = '/config/grafana'
-                  }}
-                  className="hover:scale-105 transition-transform duration-200"
-                  style={{ pointerEvents: 'auto' }}
-                >
-                  立即配置
-                </Button>
-                <Text type="secondary" style={{ fontSize: '12px' }}>
-                  点击按钮将跳转到Grafana配置页面
-                </Text>
-              </Space>
-            </div>
-          </Card>
+          <Alert
+            message="权限不足"
+            description="您没有访问Grafana监控的权限，请联系管理员。"
+            type="warning"
+            showIcon
+          />
         </div>
       </MainLayout>
     )
@@ -285,239 +323,598 @@ export default function MonitorPage() {
 
   return (
     <MainLayout>
-      <div className="p-6 space-y-6">
-        {/* 页面标题和控制栏 */}
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <DashboardOutlined className="text-2xl text-blue-500" />
-            <div>
-              <Title level={2} style={{ margin: 0 }}>
-                Grafana 监控中心
-              </Title>
-              <Text type="secondary">
-                实时监控系统指标 - 数据来源：Prometheus
-              </Text>
-            </div>
-          </div>
-          
-          <Space size="middle">
-            {/* 仪表板选择器 */}
-            <Select
-              value={currentDashboard?.id}
-              onChange={handleDashboardChange}
-              style={{ width: 200 }}
-              placeholder="选择仪表板"
-            >
-              {Object.entries(dashboardsByCategory).map(([category, dashboards]) => (
-                <Select.OptGroup key={category} label={categoryNames[category as keyof typeof categoryNames]}>
-                  {dashboards.map(dashboard => (
-                    <Option key={dashboard.id} value={dashboard.id}>
-                      <Space>
-                        <MonitorOutlined />
-                        {dashboard.name}
-                      </Space>
-                    </Option>
-                  ))}
-                </Select.OptGroup>
-              ))}
-            </Select>
-            
-            {/* 刷新间隔选择 */}
-            <Select
-              value={refreshInterval}
-              onChange={handleRefreshIntervalChange}
-              style={{ width: 100 }}
-              disabled={!isAutoRefresh}
-            >
-              <Option value="5s">5秒</Option>
-              <Option value="10s">10秒</Option>
-              <Option value="30s">30秒</Option>
-              <Option value="1m">1分钟</Option>
-              <Option value="5m">5分钟</Option>
-            </Select>
-            
-            {/* 自动刷新开关 */}
-            <Space>
-              <Text>自动刷新</Text>
-              <Switch
-                checked={isAutoRefresh}
-                onChange={handleAutoRefreshToggle}
-                checkedChildren={<PlayCircleOutlined />}
-                unCheckedChildren={<PauseCircleOutlined />}
-              />
-            </Space>
-            
-            {/* 操作按钮 */}
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={handleRefresh}
-            >
-              刷新
-            </Button>
-            
-            <Tooltip title="在新窗口打开完整Grafana界面">
-              <Button
-                icon={<ExpandOutlined />}
-                onClick={openInNewWindow}
-              >
-                完整视图
-              </Button>
-            </Tooltip>
-            
-            <Button
-              icon={<SettingOutlined />}
-              onClick={() => setConfigModalVisible(true)}
-            >
-              配置
-            </Button>
-          </Space>
-        </div>
-
-        {/* 当前仪表板信息 */}
-        <Alert
-          message={
-            <Space>
-              <MonitorOutlined />
-              <span><strong>{currentDashboard?.name}</strong></span>
-              <Divider type="vertical" />
-              <span>{currentDashboard?.description}</span>
-            </Space>
-          }
-          type="info"
-          showIcon={false}
-          style={{ marginBottom: 16 }}
-        />
-
-        {/* Grafana仪表板嵌入区域 */}
-        <Card
-          styles={{ body: { padding: 0 } }}
-          style={{ height: 'calc(100vh - 280px)', minHeight: '600px' }}
-        >
-          <iframe
-            id="grafana-iframe"
-            src={currentDashboard ? getGrafanaUrl(currentDashboard) : ''}
-            width="100%"
-            height="100%"
-            style={{
-              border: 'none',
-              borderRadius: '8px'
-            }}
-            title={`Grafana Dashboard - ${currentDashboard?.name || 'Loading'}`}
-          />
-        </Card>
-
-        {/* 快速操作面板 */}
-        <Row gutter={16}>
-          <Col span={8}>
-            <Card size="small">
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Text strong>当前仪表板</Text>
-                <Text>{currentDashboard?.name}</Text>
-                <Text type="secondary" style={{ fontSize: '12px' }}>
-                  类别: {currentDashboard ? categoryNames[currentDashboard.category] : ''}
-                </Text>
-              </Space>
-            </Card>
-          </Col>
-          <Col span={8}>
-            <Card size="small">
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Text strong>刷新设置</Text>
-                <Text>间隔: {refreshInterval}</Text>
-                <Text type="secondary" style={{ fontSize: '12px' }}>
-                  自动刷新: {isAutoRefresh ? '启用' : '停用'}
-                </Text>
-              </Space>
-            </Card>
-          </Col>
-          <Col span={8}>
-            <Card size="small">
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Text strong>主题同步</Text>
-                <Text>当前: {isDark ? '暗色' : '亮色'}</Text>
-                <Text type="secondary" style={{ fontSize: '12px' }}>
-                  主题会自动同步到Grafana
-                </Text>
-              </Space>
-            </Card>
-          </Col>
-        </Row>
-
-        {/* 配置模态框 */}
-        <Modal
-          title="Grafana仪表板配置"
-          open={configModalVisible}
-          onCancel={() => setConfigModalVisible(false)}
-          footer={null}
-          width={600}
-        >
-          <Form
-            form={form}
-            layout="vertical"
-            onFinish={handleSaveCustomDashboard}
-          >
-            <Form.Item
-              label="仪表板名称"
-              name="name"
-              rules={[{ required: true, message: '请输入仪表板名称' }]}
-            >
-              <Input placeholder="例如: 自定义系统监控" />
-            </Form.Item>
-            
-            <Form.Item
-              label="Grafana仪表板URL"
-              name="url"
-              rules={[
-                { required: true, message: '请输入Grafana仪表板URL' },
-                { type: 'url', message: '请输入有效的URL' }
-              ]}
-            >
-              <Input 
-                placeholder="http://localhost:3001/d/dashboard-id/dashboard-name?orgId=1"
-                prefix={<LinkOutlined />}
-              />
-            </Form.Item>
-            
-            <Form.Item
-              label="描述"
-              name="description"
-            >
-              <Input.TextArea
-                rows={3}
-                placeholder="描述此仪表板的监控内容和用途"
-              />
-            </Form.Item>
-            
-            <Alert
-              message="配置提示"
-              description={
-                <div>
-                  <p>• 确保Grafana服务器可访问且已配置Prometheus数据源</p>
-                  <p>• URL中会自动添加kiosk=1参数以隐藏Grafana导航栏</p>
-                  <p>• 主题和刷新参数会自动根据当前设置添加</p>
-                </div>
-              }
-              type="info"
-              style={{ marginBottom: 16 }}
-            />
-            
-            <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-              <Button onClick={() => setConfigModalVisible(false)}>
-                取消
-              </Button>
-              <Button type="primary" htmlType="submit">
-                保存仪表板
-              </Button>
-            </Space>
-          </Form>
-        </Modal>
-
-        {/* Grafana配置已移至独立页面 /config/grafana */}
-
-
+      <div style={{ padding: '24px' }}>
+      <div style={{ marginBottom: '24px' }}>
+        <Title level={2} style={{ margin: 0, display: 'flex', alignItems: 'center' }}>
+          <MonitorOutlined style={{ marginRight: '12px', color: '#1890ff' }} />
+          Grafana监控
+        </Title>
+        <Text type="secondary">
+          管理和监控Grafana仪表板，实时查看系统监控数据
+        </Text>
       </div>
 
+      {/* 统计信息 */}
+      <Row gutter={16} style={{ marginBottom: '24px' }}>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="配置总数"
+              value={configs.length}
+              prefix={<SettingOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="活跃配置"
+              value={activeConfig ? 1 : 0}
+              prefix={<ApiOutlined />}
+              valueStyle={{ color: activeConfig ? '#3f8600' : '#cf1322' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="仪表板数量"
+              value={dashboards.length}
+              prefix={<DashboardOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="文件夹数量"
+              value={Object.keys(dashboardsByFolder).length}
+              prefix={<MonitorOutlined />}
+            />
+          </Card>
+        </Col>
+      </Row>
 
+      {/* Grafana配置管理 */}
+      <Card 
+        title="Grafana配置管理" 
+        className="mb-6"
+        extra={
+          canWrite && (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setEditingConfig(null)
+                setConfigModalVisible(true)
+                setTestResult(null)
+                configForm.resetFields()
+              }}
+            >
+              添加配置
+            </Button>
+          )
+        }
+      >
+        {configs.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px' }}>
+            <MonitorOutlined style={{ fontSize: '48px', color: '#d9d9d9', marginBottom: '16px' }} />
+            <div>
+              <Text type="secondary">还没有Grafana配置</Text>
+            </div>
+            {canWrite && (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                style={{ marginTop: '16px' }}
+                onClick={() => {
+                  setEditingConfig(null)
+                  setConfigModalVisible(true)
+                  setTestResult(null)
+                  configForm.resetFields()
+                }}
+              >
+                创建第一个配置
+              </Button>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* 配置选择器 */}
+            {configs.length > 1 && (
+              <div style={{ marginBottom: '16px' }}>
+                <Text type="secondary" style={{ marginRight: 8 }}>选择Grafana配置：</Text>
+                <Select
+                  value={activeConfig?.id}
+                  onChange={switchConfig}
+                  style={{ width: 200 }}
+                  placeholder="选择Grafana配置"
+                >
+                  {configs.map(config => (
+                    <Select.Option key={config.id} value={config.id}>
+                      <Space>
+                        {config.name}
+                        {config.isActive && <Tag color="green">活跃</Tag>}
+                      </Space>
+                    </Select.Option>
+                  ))}
+                </Select>
+              </div>
+            )}
+            
+            {/* 配置管理按钮 */}
+            {activeConfig && canWrite && (
+              <div style={{ marginBottom: '16px' }}>
+                <Space>
+                  <Button
+                    size="small"
+                    icon={<SettingOutlined />}
+                    onClick={() => editConfig(activeConfig)}
+                  >
+                    编辑配置
+                  </Button>
+                  <Button
+                    size="small"
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={() => showDeleteConfirm(activeConfig)}
+                  >
+                    删除配置
+                  </Button>
+                  <Button
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={() => activeConfig && loadDashboards(activeConfig.id)}
+                    loading={dashboardsLoading}
+                  >
+                    刷新仪表板
+                  </Button>
+                </Space>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+
+      {/* 仪表板列表 */}
+      {activeConfig && (
+        <Card 
+          title={`仪表板列表 - ${activeConfig.name}`}
+          loading={dashboardsLoading}
+        >
+          {dashboards.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px' }}>
+              <DashboardOutlined style={{ fontSize: '48px', color: '#d9d9d9', marginBottom: '16px' }} />
+              <div>
+                <Text type="secondary">没有找到仪表板</Text>
+              </div>
+              <div style={{ marginTop: '8px' }}>
+                <Text type="secondary" style={{ fontSize: '12px' }}>
+                  请检查Grafana配置和权限设置
+                </Text>
+              </div>
+            </div>
+          ) : (
+            <div>
+              {Object.entries(dashboardsByFolder).map(([folderName, folderDashboards], folderIndex) => {
+                // 简单的颜色方案
+                const colorTheme = {
+                  bg: 'transparent',
+                  border: isDark ? 'rgba(255, 255, 255, 0.1)' : '#d9d9d9',
+                  icon: '#1890ff',
+                  text: 'inherit'
+                }
+
+                return (
+                  <div key={folderName} style={{ marginBottom: '32px' }}>
+                    {/* 文件夹标题 */}
+                    <Card
+                      size="small"
+                      style={{
+                        marginBottom: '16px',
+                        borderLeft: `4px solid ${colorTheme.icon}`,
+                        borderRadius: '6px'
+                      }}
+                      bodyStyle={{
+                        padding: '12px 16px'
+                      }}
+                    >
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <div style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '6px',
+                            background: colorTheme.icon,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginRight: '12px'
+                          }}>
+                            <span style={{ color: 'white', fontSize: '14px' }}>📁</span>
+                          </div>
+                          <div>
+                            <Title level={5} style={{
+                              margin: 0,
+                              fontSize: '16px',
+                              fontWeight: 600
+                            }}>
+                              {folderName}
+                            </Title>
+                            <Text type="secondary" style={{ fontSize: '12px' }}>
+                              {folderDashboards.length} 个仪表板
+                            </Text>
+                          </div>
+                        </div>
+                        <Tag color={colorTheme.icon} style={{
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          fontWeight: 500,
+                          margin: 0
+                        }}>
+                          {folderDashboards.length}
+                        </Tag>
+                      </div>
+                    </Card>
+
+                    {/* 仪表板卡片 */}
+                    <Row gutter={[20, 28]}> {/* 从24增加到28，增加15% */}
+                      {folderDashboards.map((dashboard, dashIndex) => (
+                        <Col span={6} key={dashboard.uid}> {/* 从span={8}改为span={6}，缩小40% */}
+                          <Card
+                            hoverable
+                            style={{
+                              height: '108px', // 从180px缩小40%到108px
+                              borderRadius: '8px',
+                              transition: 'all 0.3s ease',
+                              position: 'relative'
+                              // 移除自定义背景，使用Antd默认背景
+                            }}
+                            bodyStyle={{
+                              padding: '12px', // 从16px缩小到12px
+                              height: '100%',
+                              display: 'flex',
+                              flexDirection: 'column'
+                            }}
+                          >
+                            {/* 查看按钮 - 右上角 */}
+                            <div style={{
+                              position: 'absolute',
+                              top: '8px',
+                              right: '8px',
+                              zIndex: 10
+                            }}>
+                              <Button
+                                type="primary"
+                                size="small"
+                                icon={<EyeOutlined />}
+                                style={{
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  height: '22px',
+                                  padding: '0 6px',
+                                  fontWeight: 500,
+                                  background: isDark ? 'rgba(24, 144, 255, 0.5)' : 'rgba(24, 144, 255, 0.5)',
+                                  borderColor: isDark ? 'rgba(24, 144, 255, 0.5)' : 'rgba(24, 144, 255, 0.5)'
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  const embedUrl = `${activeConfig.protocol}://${activeConfig.host}:${activeConfig.port}/d/${dashboard.uid}?orgId=${activeConfig.orgId}&kiosk=tv&theme=${isDark ? 'dark' : 'light'}`
+                                  window.open(embedUrl, '_blank')
+                                }}
+                              >
+                                查看
+                              </Button>
+                            </div>
+
+                            {/* 仪表板标题 - 紧凑版 */}
+                            <div style={{ marginBottom: '6px', paddingRight: '60px' }}> {/* 给右上角按钮留空间 */}
+                              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
+                                <div style={{
+                                  width: '6px',
+                                  height: '6px',
+                                  borderRadius: '50%',
+                                  background: '#1890ff',
+                                  marginRight: '6px',
+                                  flexShrink: 0
+                                }} />
+                                <Tooltip title={dashboard.title}>
+                                  <Title level={5} style={{
+                                    margin: 0,
+                                    fontSize: '14px', // 从16px缩小到14px
+                                    fontWeight: 600,
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                  }}>
+                                    {dashboard.title}
+                                  </Title>
+                                </Tooltip>
+                                {dashboard.isStarred && (
+                                  <span style={{
+                                    color: '#faad14',
+                                    fontSize: '10px',
+                                    marginLeft: '4px'
+                                  }}>⭐</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* 标签区域 - 紧凑版 */}
+                            <div style={{ marginBottom: '7px', minHeight: '16px' }}> {/* 从8px缩小到7px，减少10% */}
+                              {dashboard.tags.length > 0 && (
+                                <div style={{
+                                  display: 'flex',
+                                  flexWrap: 'wrap',
+                                  gap: '2px'
+                                }}>
+                                  {dashboard.tags.slice(0, 2).map((tag, tagIndex) => {
+                                    const tagColors = ['blue', 'green', 'orange', 'purple', 'red', 'cyan']
+                                    return (
+                                      <Tag
+                                        key={tag}
+                                        color={tagColors[tagIndex % tagColors.length]}
+                                        style={{
+                                          borderRadius: '8px',
+                                          fontSize: '10px',
+                                          margin: 0,
+                                          border: 'none',
+                                          padding: '0 4px',
+                                          lineHeight: '16px'
+                                        }}
+                                      >
+                                        {tag}
+                                      </Tag>
+                                    )
+                                  })}
+                                  {dashboard.tags.length > 2 && (
+                                    <Tag style={{
+                                      fontSize: '10px',
+                                      margin: 0,
+                                      borderRadius: '8px',
+                                      background: isDark ? 'rgba(255, 255, 255, 0.1)' : '#f0f0f0',
+                                      color: isDark ? '#ffffff' : '#666666',
+                                      border: 'none',
+                                      padding: '0 4px',
+                                      lineHeight: '16px'
+                                    }}>
+                                      +{dashboard.tags.length - 2}
+                                    </Tag>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* UID显示区域 - 底部 */}
+                            <div style={{ marginTop: 'auto' }}>
+                              <div style={{
+                                padding: '4px 6px',
+                                background: isDark ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)',
+                                borderRadius: '4px',
+                                border: isDark ? '1px solid rgba(255, 255, 255, 0.06)' : '1px solid rgba(0, 0, 0, 0.06)'
+                              }}>
+                                <Text style={{
+                                  fontSize: '10px',
+                                  fontFamily: 'Monaco, Consolas, monospace',
+                                  color: isDark ? 'rgba(255, 255, 255, 0.65)' : 'rgba(0, 0, 0, 0.65)',
+                                  wordBreak: 'break-all',
+                                  lineHeight: '12px'
+                                }}>
+                                  UID: {dashboard.uid}
+                                </Text>
+                              </div>
+                            </div>
+                          </Card>
+                        </Col>
+                      ))}
+                    </Row>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* 配置模态框 */}
+      <Modal
+        title={editingConfig ? '编辑Grafana配置' : '添加Grafana配置'}
+        open={configModalVisible}
+        onCancel={() => {
+          setConfigModalVisible(false)
+          setEditingConfig(null)
+          setTestResult(null)
+          configForm.resetFields()
+        }}
+        footer={null}
+        width={800}
+      >
+        <Form
+          form={configForm}
+          layout="vertical"
+          onFinish={saveConfig}
+          initialValues={{
+            port: 3000,
+            protocol: 'http',
+            orgId: 1,
+            isActive: false
+          }}
+        >
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="配置名称"
+                name="name"
+                rules={[{ required: true, message: '请输入配置名称' }]}
+              >
+                <Input placeholder="例如：生产环境Grafana" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                label="协议"
+                name="protocol"
+                rules={[{ required: true, message: '请选择协议' }]}
+              >
+                <Select>
+                  <Option value="http">HTTP</Option>
+                  <Option value="https">HTTPS</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={16}>
+              <Form.Item
+                label="服务器地址"
+                name="host"
+                rules={[{ required: true, message: '请输入服务器地址' }]}
+              >
+                <Input placeholder="例如：grafana.example.com 或 192.168.1.100" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                label="端口"
+                name="port"
+                rules={[{ required: true, message: '请输入端口' }]}
+              >
+                <Input type="number" placeholder="3000" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Divider>认证信息</Divider>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="用户名"
+                name="username"
+              >
+                <Input placeholder="Grafana用户名（可选）" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                label="密码"
+                name="password"
+              >
+                <Input.Password placeholder="Grafana密码（可选）" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item
+            label="API密钥"
+            name="apiKey"
+            extra="推荐使用API密钥而不是用户名密码"
+          >
+            <Input.Password placeholder="Grafana API Key（可选）" />
+          </Form.Item>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="组织ID"
+                name="orgId"
+              >
+                <Input type="number" placeholder="1" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                label="设为活跃配置"
+                name="isActive"
+                valuePropName="checked"
+              >
+                <Switch />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item
+            label="描述"
+            name="description"
+          >
+            <Input.TextArea rows={2} placeholder="配置描述（可选）" />
+          </Form.Item>
+
+          <Form.Item
+            label="标签"
+            name="tags"
+            extra="多个标签用逗号分隔"
+          >
+            <Input placeholder="例如：生产,监控,告警" />
+          </Form.Item>
+
+          {/* 测试结果 */}
+          {testResult && (
+            <Alert
+              message={testResult.success ? '连接测试成功' : '连接测试失败'}
+              description={
+                testResult.success ? (
+                  <div>
+                    <p>✅ 成功连接到Grafana服务器</p>
+                    {testResult.data && (
+                      <div>
+                        <p>版本: {testResult.data.version}</p>
+                        <p>数据库: {testResult.data.database}</p>
+                        {testResult.data.organization && (
+                          <p>组织: {testResult.data.organization.name}</p>
+                        )}
+                        <p>数据源数量: {testResult.data.datasourceCount}</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <p>❌ {testResult.error}</p>
+                    {testResult.details && <p>{testResult.details}</p>}
+                  </div>
+                )
+              }
+              type={testResult.success ? 'success' : 'error'}
+              style={{ marginBottom: 16 }}
+            />
+          )}
+
+          <div style={{ textAlign: 'right' }}>
+            <Space>
+              <Button
+                onClick={() => {
+                  setConfigModalVisible(false)
+                  setEditingConfig(null)
+                  setTestResult(null)
+                  configForm.resetFields()
+                }}
+              >
+                取消
+              </Button>
+              <Button
+                onClick={testConnection}
+                loading={testLoading}
+              >
+                测试连接
+              </Button>
+              <Button
+                type="primary"
+                htmlType="submit"
+                disabled={!canWrite || saving}
+                loading={saving}
+              >
+                {saving ? '保存中...' : '保存配置'}
+              </Button>
+            </Space>
+          </div>
+        </Form>
+      </Modal>
+      </div>
     </MainLayout>
-  );
+  )
 }

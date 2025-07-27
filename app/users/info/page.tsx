@@ -38,6 +38,8 @@ import {
   UnlockOutlined
 } from '@ant-design/icons'
 import MainLayout from '../../components/layout/MainLayout'
+import { PermissionGuard, PermissionButton } from '../../components/auth/PermissionGuard'
+import { usePermissions } from '../../hooks/usePermissions'
 
 const { Title, Text } = Typography
 const { Option } = Select
@@ -61,84 +63,10 @@ interface User {
   updatedAt: string
   avatar?: string
   department?: string
+  permissionGroups?: any[]
 }
 
-// 模拟用户数据
-const mockUsers: User[] = [
-  {
-    id: 'cmcl8td470000nsgr09t6vwce',
-    username: 'superadmin',
-    email: 'superadmin@example.com',
-    fullName: '超级管理员',
-    phone: '13800138000',
-    role: '超级管理员',
-    isActive: true,
-    approvalStatus: 'approved',
-    lastLoginAt: '2024-01-03T10:30:00Z',
-    createdAt: '2024-01-01T00:00:00Z',
-    updatedAt: '2024-01-03T10:30:00Z',
-    department: '技术部',
-    permissions: ['users:manage', 'permissions:manage', 'servers:manage', 'config:manage', 'ai:use']
-  },
-  {
-    id: 'cmcl8npz50000nsrg261hocn4',
-    username: 'testuser',
-    email: 'testuser@example.com',
-    fullName: '测试用户',
-    phone: '13800138001',
-    role: '普通用户',
-    isActive: false,
-    approvalStatus: 'pending',
-    createdAt: '2024-01-02T08:15:00Z',
-    updatedAt: '2024-01-02T08:15:00Z',
-    department: '运维部',
-    permissions: ['ai:use']
-  },
-  {
-    id: 'user3',
-    username: 'admin',
-    email: 'admin@example.com',
-    fullName: '系统管理员',
-    phone: '13800138002',
-    role: '管理员',
-    isActive: true,
-    approvalStatus: 'approved',
-    lastLoginAt: '2024-01-03T09:45:00Z',
-    createdAt: '2024-01-01T12:00:00Z',
-    updatedAt: '2024-01-03T09:45:00Z',
-    department: '技术部',
-    permissions: ['servers:manage', 'config:manage', 'ai:use']
-  },
-  {
-    id: 'user4',
-    username: 'operator',
-    email: 'operator@example.com',
-    fullName: '运维操作员',
-    phone: '13800138003',
-    role: '操作员',
-    isActive: true,
-    approvalStatus: 'approved',
-    lastLoginAt: '2024-01-03T08:20:00Z',
-    createdAt: '2024-01-01T16:30:00Z',
-    updatedAt: '2024-01-03T08:20:00Z',
-    department: '运维部',
-    permissions: ['ai:use']
-  },
-  {
-    id: 'user5',
-    username: 'suspended_user',
-    email: 'suspended@example.com',
-    fullName: '已暂停用户',
-    role: '普通用户',
-    isActive: false,
-    approvalStatus: 'approved',
-    lastLoginAt: '2024-01-01T15:30:00Z',
-    createdAt: '2024-01-01T10:00:00Z',
-    updatedAt: '2024-01-02T14:00:00Z',
-    department: '市场部',
-    permissions: ['ai:use']
-  }
-]
+
 
 export default function UserInfoPage() {
   const [users, setUsers] = useState<User[]>([])
@@ -146,6 +74,8 @@ export default function UserInfoPage() {
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [form] = Form.useForm()
+  const [permissionGroups, setPermissionGroups] = useState<any[]>([])
+  const [permissions, setPermissions] = useState<any[]>([])
 
   // 获取用户列表
   const fetchUsers = async () => {
@@ -162,16 +92,46 @@ export default function UserInfoPage() {
     } catch (error) {
       console.error('获取用户列表失败:', error)
       message.error('获取用户列表失败，请刷新页面重试')
-      // 如果API失败，使用模拟数据作为后备
-      setUsers(mockUsers)
+      setUsers([])
     } finally {
       setLoading(false)
+    }
+  }
+
+  // 获取权限组列表
+  const fetchPermissionGroups = async () => {
+    try {
+      const response = await fetch('/api/permission-groups')
+      if (!response.ok) {
+        throw new Error('获取权限组列表失败')
+      }
+      const result = await response.json()
+      setPermissionGroups(result.data || [])
+    } catch (error) {
+      console.error('获取权限组列表失败:', error)
+      message.error('获取权限组列表失败')
+    }
+  }
+
+  // 获取权限列表
+  const fetchPermissions = async () => {
+    try {
+      const response = await fetch('/api/permissions')
+      if (!response.ok) {
+        throw new Error('获取权限列表失败')
+      }
+      const result = await response.json()
+      setPermissions(result.data?.permissions || [])
+    } catch (error) {
+      console.error('获取权限列表失败:', error)
     }
   }
 
   // 页面加载时获取用户数据
   useEffect(() => {
     fetchUsers()
+    fetchPermissionGroups()
+    fetchPermissions()
   }, [])
 
   // 获取状态统计
@@ -281,14 +241,24 @@ export default function UserInfoPage() {
       )
     },
     {
-      title: '角色/部门',
+      title: '角色/权限组',
       key: 'roleInfo',
-      width: 150,
+      width: 180,
       render: (_: any, record: User) => (
         <div className="space-y-1">
           <Tag color="purple">{record.role}</Tag>
-          {record.department && (
+          {record.permissionGroups && record.permissionGroups.length > 0 ? (
+            <div className="space-y-1">
+              {record.permissionGroups.map((group: any) => (
+                <Tag key={group.id} color="blue" className="text-xs">
+                  {group.name}
+                </Tag>
+              ))}
+            </div>
+          ) : record.department ? (
             <div className="text-sm text-gray-500">{record.department}</div>
+          ) : (
+            <div className="text-sm text-gray-400">未分配权限组</div>
           )}
         </div>
       )
@@ -459,7 +429,8 @@ export default function UserInfoPage() {
     form.setFieldsValue({
       ...user,
       isActive: user.isActive,
-      approvalStatus: user.approvalStatus
+      approvalStatus: user.approvalStatus,
+      permissionGroups: user.permissionGroups?.map(g => g.id) || []
     })
     setIsModalVisible(true)
   }
@@ -593,7 +564,8 @@ export default function UserInfoPage() {
           },
           body: JSON.stringify({
             id: editingUser.id,
-            ...values
+            ...values,
+            permissionGroupIds: values.permissionGroups || []
           }),
         })
 
@@ -612,10 +584,15 @@ export default function UserInfoPage() {
         message.success(result.data.message)
       } else {
         // 添加新用户 - 这里应该调用注册API，暂时保持原有逻辑
+        const selectedGroups = (permissionGroups || []).filter(g =>
+          values.permissionGroups?.includes(g.id)
+        )
         const newUser: User = {
           id: Date.now().toString(),
           ...values,
           permissions: values.permissions || ['ai:use'],
+          permissionGroups: selectedGroups,
+          approvalStatus: 'approved', // 新创建的用户默认为已审批状态
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }
@@ -635,6 +612,7 @@ export default function UserInfoPage() {
 
   return (
     <MainLayout>
+      <PermissionGuard module="users" action="read">
       <div className="p-6 space-y-6">
         {/* 页面标题 */}
         <div className="flex justify-between items-center">
@@ -646,13 +624,16 @@ export default function UserInfoPage() {
               管理系统中的所有用户信息和状态
             </Text>
           </div>
-          <Button 
-            type="primary" 
+          <PermissionButton
+            type="primary"
             icon={<PlusOutlined />}
             onClick={handleAdd}
+            module="users"
+            action="write"
+            hideWhenNoPermission
           >
             添加用户
-          </Button>
+          </PermissionButton>
         </div>
 
         {/* 统计卡片 */}
@@ -797,16 +778,40 @@ export default function UserInfoPage() {
               </Col>
               <Col span={12}>
                 <Form.Item
-                  name="department"
-                  label="部门"
+                  name="permissionGroups"
+                  label="权限组"
+                  help="选择用户所属的权限组，将自动继承权限组的权限"
                 >
-                  <Select placeholder="请选择部门" allowClear>
-                    <Option value="技术部">技术部</Option>
-                    <Option value="运维部">运维部</Option>
-                    <Option value="产品部">产品部</Option>
-                    <Option value="市场部">市场部</Option>
-                    <Option value="人事部">人事部</Option>
-                  </Select>
+                  <Select
+                    mode="multiple"
+                    placeholder="请选择权限组"
+                    allowClear
+                    showSearch
+                    filterOption={(input, option) =>
+                      (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                    }
+                    options={(permissionGroups || []).map(group => ({
+                      label: `${group.name} (${group.description || '无描述'})`,
+                      value: group.id
+                    }))}
+                    onChange={(selectedGroupIds) => {
+                      // 当权限组改变时，自动更新权限
+                      if (selectedGroupIds && selectedGroupIds.length > 0) {
+                        const selectedGroups = (permissionGroups || []).filter(g =>
+                          selectedGroupIds.includes(g.id)
+                        )
+                        const allPermissions = new Set<string>()
+                        selectedGroups.forEach(group => {
+                          group.permissions?.forEach((permission: any) => {
+                            allPermissions.add(permission.code)
+                          })
+                        })
+                        form.setFieldsValue({
+                          permissions: Array.from(allPermissions)
+                        })
+                      }
+                    }}
+                  />
                 </Form.Item>
               </Col>
             </Row>
@@ -824,36 +829,25 @@ export default function UserInfoPage() {
                   />
                 </Form.Item>
               </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="approvalStatus"
-                  label="审批状态"
-                  rules={[{ required: true, message: '请选择审批状态' }]}
-                >
-                  <Select placeholder="请选择审批状态">
-                    <Option value="pending">待审批</Option>
-                    <Option value="approved">已审批</Option>
-                    <Option value="rejected">已拒绝</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
+
             </Row>
 
             <Form.Item
               name="permissions"
               label="权限"
-              rules={[{ required: true, message: '请选择权限' }]}
+              help="权限将从所选权限组自动继承，也可以手动添加额外权限"
             >
               <Select
                 mode="multiple"
-                placeholder="请选择权限"
-                options={[
-                  { label: '用户管理 (users:manage)', value: 'users:manage' },
-                  { label: '权限管理 (permissions:manage)', value: 'permissions:manage' },
-                  { label: '主机管理 (servers:manage)', value: 'servers:manage' },
-                  { label: '配置管理 (config:manage)', value: 'config:manage' },
-                  { label: 'AI助手使用 (ai:use)', value: 'ai:use' }
-                ]}
+                placeholder="权限将从权限组自动继承"
+                showSearch
+                filterOption={(input, option) =>
+                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                }
+                options={(permissions || []).map(permission => ({
+                  label: `${permission.name} (${permission.code}) - ${permission.category}`,
+                  value: permission.code
+                }))}
               />
             </Form.Item>
 
@@ -870,6 +864,7 @@ export default function UserInfoPage() {
           </Form>
         </Modal>
       </div>
+      </PermissionGuard>
     </MainLayout>
   )
 }

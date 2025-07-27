@@ -10,6 +10,14 @@ export interface CICDProject {
   buildScript?: string
   deployScript?: string
   environment: 'dev' | 'test' | 'prod'
+  notificationUsers?: string[] // 通知人员用户ID列表
+  buildTriggers?: {
+    onPush: boolean
+    onPullRequest: boolean
+    onSchedule: boolean
+    scheduleExpression?: string
+  }
+  buildTimeout?: number // 构建超时时间(分钟)
   isActive: boolean
   userId: string
   createdAt: Date
@@ -108,6 +116,11 @@ export interface Deployment {
   duration?: number
   logs?: string
   config?: any
+  templateId?: string // 部署模板ID
+  deploymentHosts?: string[] // 部署主机ID列表
+  notificationUsers?: string[] // 通知人员ID列表
+  approvalUsers?: string[] // 审批人员ID列表
+  requireApproval?: boolean // 是否需要审批
   userId: string
   createdAt: Date
   updatedAt: Date
@@ -136,6 +149,14 @@ export interface CreateCICDProjectRequest {
   buildScript?: string
   deployScript?: string
   environment?: 'dev' | 'test' | 'prod'
+  notificationUsers?: string[]
+  buildTriggers?: {
+    onPush: boolean
+    onPullRequest: boolean
+    onSchedule: boolean
+    scheduleExpression?: string
+  }
+  buildTimeout?: number
 }
 
 export interface UpdateCICDProjectRequest {

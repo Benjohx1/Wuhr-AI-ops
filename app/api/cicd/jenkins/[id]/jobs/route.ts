@@ -163,19 +163,37 @@ export async function GET(
         )
       }
 
-      // 获取所有作业
-      const jobs = await jenkinsClient.getJobs()
+      // 由于Jenkins客户端库有问题，直接使用HTTP调用获取作业列表
+      console.log('🔄 使用直接HTTP调用获取Jenkins作业列表...')
+
+      const jobsResponse = await fetch(`${jenkinsConfig.serverUrl}/api/json?tree=jobs[name,displayName,description,url,buildable,color,lastBuild[number,url,timestamp,result,duration],nextBuildNumber,inQueue]`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Basic ${base64Auth}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'Wuhr-AI-Ops/1.0'
+        },
+        signal: AbortSignal.timeout(15000)
+      })
+
+      if (!jobsResponse.ok) {
+        console.error(`❌ HTTP获取作业列表失败: ${jobsResponse.status} ${jobsResponse.statusText}`)
+        throw new Error(`HTTP ${jobsResponse.status}: ${jobsResponse.statusText}`)
+      }
+
+      const jobsData = await jobsResponse.json()
+      const jobs = jobsData.jobs || []
 
       console.log(`✅ 成功获取 ${jobs.length} 个Jenkins作业`)
 
       return successResponse({
-        jobs: jobs.map(job => ({
+        jobs: jobs.map((job: any) => ({
           name: job.name,
           displayName: job.displayName || job.name,
           description: job.description || '',
           url: job.url,
-          buildable: job.buildable,
-          color: job.color,
+          buildable: job.buildable !== false, // 默认为true
+          color: job.color || 'notbuilt',
           lastBuild: job.lastBuild ? {
             number: job.lastBuild.number,
             url: job.lastBuild.url,
@@ -184,7 +202,7 @@ export async function GET(
             duration: job.lastBuild.duration
           } : null,
           nextBuildNumber: job.nextBuildNumber,
-          inQueue: job.inQueue
+          inQueue: job.inQueue || false
         })),
         total: jobs.length,
         jenkinsConfig: {
@@ -196,6 +214,29 @@ export async function GET(
 
     } catch (jenkinsError: any) {
       console.error('❌ 连接Jenkins服务器失败:', jenkinsError)
+
+      // 特殊处理403权限错误
+      if (jenkinsError.statusCode === 403 || jenkinsError.message?.includes('Forbidden')) {
+        return errorResponse(
+          'Jenkins权限不足',
+          `当前用户 "${jenkinsConfig.username}" 没有查看Jenkins作业列表的权限。
+
+解决方案：
+1. 确保用户具有 "Overall/Read" 权限
+2. 确保用户具有 "Job/Read" 权限
+3. 或者将用户添加到具有相应权限的用户组中
+
+请联系Jenkins管理员配置相应权限。
+
+技术详情：
+- Jenkins服务器：${jenkinsConfig.serverUrl}
+- 用户名：${jenkinsConfig.username}
+- 错误代码：403 Forbidden`,
+          403
+        )
+      }
+
+      // 其他错误的通用处理
       return errorResponse(
         '无法连接到Jenkins服务器',
         `请检查Jenkins配置和网络连接: ${jenkinsError.message}`,

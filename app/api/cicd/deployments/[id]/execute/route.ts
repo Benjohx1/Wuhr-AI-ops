@@ -1,23 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '../../../../../../lib/auth/apiHelpers-new'
+import { requireAuth } from '../../../../../../lib/auth/apiHelpers'
 import { getPrismaClient } from '../../../../../../lib/config/database'
-import { z } from 'zod'
 
-// 强制动态渲染
-export const dynamic = 'force-dynamic'
-
-// 执行部署验证schema
-const ExecuteDeploymentSchema = z.object({
-  buildParameters: z.record(z.any()).optional(),
-  forceExecute: z.boolean().optional().default(false)
-})
-
-// 执行部署
+// 执行Jenkins部署任务
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    // 权限检查
     const authResult = await requireAuth(request)
     if (!authResult.success) {
       return authResult.response
@@ -25,38 +16,19 @@ export async function POST(
 
     const { user } = authResult
     const deploymentId = params.id
-    const body = await request.json()
 
-    // 验证输入数据
-    const validationResult = ExecuteDeploymentSchema.safeParse(body)
-    if (!validationResult.success) {
-      return NextResponse.json({
-        success: false,
-        error: '输入数据验证失败',
-        details: validationResult.error.errors
-      }, { status: 400 })
-    }
+    console.log(`🚀 开始执行Jenkins部署任务: ${deploymentId} by ${user.username}`)
 
-    const { buildParameters, forceExecute } = validationResult.data
     const prisma = await getPrismaClient()
 
-    console.log('🚀 执行部署任务:', { deploymentId, buildParameters, forceExecute })
-
-    // 获取部署任务详情
-    const deployment = await prisma.deployment.findFirst({
-      where: {
-        id: deploymentId,
-        userId: user.id
-      },
+    // 获取部署任务信息
+    const deployment = await prisma.deployment.findUnique({
+      where: { id: deploymentId },
       include: {
-        project: {
+        user: {
           select: {
             id: true,
-            name: true,
-            repositoryUrl: true,
-            branch: true,
-            buildScript: true,
-            deployScript: true
+            username: true
           }
         }
       }
@@ -65,162 +37,186 @@ export async function POST(
     if (!deployment) {
       return NextResponse.json({
         success: false,
-        error: '部署任务不存在或无权限访问'
+        error: '部署任务不存在'
       }, { status: 404 })
     }
 
-    // 检查部署状态
-    if (deployment.status === 'deploying') {
+    if (!deployment.isJenkinsDeployment) {
       return NextResponse.json({
         success: false,
-        error: '部署任务正在执行中，请勿重复执行'
+        error: '这不是Jenkins部署任务'
       }, { status: 400 })
     }
 
-    if (deployment.status === 'success' && !forceExecute) {
+    // 检查任务状态
+    if (!['pending', 'approved'].includes(deployment.status)) {
       return NextResponse.json({
         success: false,
-        error: '部署任务已成功完成，如需重新执行请设置forceExecute为true'
+        error: `任务状态为 ${deployment.status}，无法执行`
       }, { status: 400 })
     }
 
-    // 开始执行部署
-    let executionLogs = `[${new Date().toISOString()}] 🚀 开始部署流程\n`
-    let executionResult: any = {}
-    let buildNumber: string
+    // 获取Jenkins配置
+    const jenkinsConfig = await prisma.jenkinsConfig.findFirst({
+      where: { isActive: true }
+    })
 
-    try {
-      // 更新部署状态为执行中
-      await prisma.deployment.update({
-        where: { id: deploymentId },
-        data: {
-          status: 'deploying',
-          startedAt: new Date(),
-          logs: executionLogs
-        }
-      })
-
-      // 执行本地部署流程
-      console.log('📝 执行本地部署流程...')
-      
-      executionLogs += `[${new Date().toISOString()}] 项目: ${deployment.project.name}\n`
-      executionLogs += `[${new Date().toISOString()}] 环境: ${deployment.environment}\n`
-      executionLogs += `[${new Date().toISOString()}] 版本: ${deployment.version || 'latest'}\n`
-      
-      if (buildParameters && Object.keys(buildParameters).length > 0) {
-        executionLogs += `[${new Date().toISOString()}] 构建参数: ${JSON.stringify(buildParameters, null, 2)}\n`
-      }
-      
-      executionLogs += `\n`
-
-      // 模拟构建过程
-      if (deployment.project.buildScript) {
-        executionLogs += `[${new Date().toISOString()}] 📝 开始构建流程\n`
-        executionLogs += `[${new Date().toISOString()}] 🔧 执行构建脚本:\n`
-        executionLogs += `${deployment.project.buildScript}\n`
-        
-        // 模拟构建时间
-        await new Promise(resolve => setTimeout(resolve, 2000))
-        executionLogs += `[${new Date().toISOString()}] ✅ 构建完成\n\n`
-      } else {
-        executionLogs += `[${new Date().toISOString()}] ⚠️ 未配置构建脚本，跳过构建步骤\n\n`
-      }
-
-      // 模拟部署过程
-      executionLogs += `[${new Date().toISOString()}] 🚀 开始部署流程\n`
-      
-      if (deployment.project.deployScript) {
-        executionLogs += `[${new Date().toISOString()}] 🔧 执行部署脚本:\n`
-        executionLogs += `${deployment.project.deployScript}\n`
-        
-        // 模拟部署时间
-        await new Promise(resolve => setTimeout(resolve, 3000))
-        executionLogs += `[${new Date().toISOString()}] ✅ 部署完成\n`
-      } else {
-        executionLogs += `[${new Date().toISOString()}] ⚠️ 未配置部署脚本，跳过部署步骤\n`
-      }
-
-      executionResult = {
-        mode: 'local',
-        success: true,
-        message: '本地部署执行成功',
-        buildScript: deployment.project.buildScript,
-        deployScript: deployment.project.deployScript,
-        environment: deployment.environment,
-        buildParameters: buildParameters || {}
-      }
-
-      buildNumber = `BUILD-${Date.now()}`
-      executionLogs += `[${new Date().toISOString()}] 📋 构建号: ${buildNumber}\n`
-      executionLogs += `[${new Date().toISOString()}] 🎉 部署流程完成\n`
-
-      // 更新部署状态为成功
-      const updatedDeployment = await prisma.deployment.update({
-        where: { id: deploymentId },
-        data: {
-          status: 'success',
-          completedAt: new Date(),
-          duration: Math.floor((Date.now() - new Date(deployment.startedAt || Date.now()).getTime()) / 1000),
-          buildNumber: parseInt(buildNumber.split('-')[1]),
-          logs: executionLogs,
-          config: {
-            ...(deployment.config as any || {}),
-            executionResult,
-            buildParameters: buildParameters || {}
-          }
-        }
-      })
-
-      console.log('✅ 部署执行成功:', deploymentId)
-
-      return NextResponse.json({
-        success: true,
-        data: {
-          id: updatedDeployment.id,
-          status: updatedDeployment.status,
-          buildNumber: updatedDeployment.buildNumber,
-          startedAt: updatedDeployment.startedAt,
-          completedAt: updatedDeployment.completedAt,
-          duration: updatedDeployment.duration,
-          logs: updatedDeployment.logs,
-          executionResult
-        },
-        message: '部署执行成功'
-      })
-
-    } catch (error) {
-      console.error('❌ 部署执行失败:', error)
-      
-      const errorMessage = error instanceof Error ? error.message : '未知错误'
-      executionLogs += `[${new Date().toISOString()}] ❌ 部署失败: ${errorMessage}\n`
-
-      // 更新部署状态为失败
-      await prisma.deployment.update({
-        where: { id: deploymentId },
-        data: {
-          status: 'failed',
-          completedAt: new Date(),
-          duration: Math.floor((Date.now() - new Date(deployment.startedAt || Date.now()).getTime()) / 1000),
-          logs: executionLogs,
-          config: {
-            ...(deployment.config as any || {}),
-            error: errorMessage,
-            buildParameters: buildParameters || {}
-          }
-        }
-      })
-
+    if (!jenkinsConfig) {
       return NextResponse.json({
         success: false,
-        error: `部署执行失败: ${errorMessage}`
-      }, { status: 500 })
+        error: '没有找到激活的Jenkins配置'
+      }, { status: 400 })
     }
+
+    console.log('🔧 使用Jenkins配置:', {
+      id: jenkinsConfig.id,
+      name: jenkinsConfig.name,
+      serverUrl: jenkinsConfig.serverUrl
+    })
+
+    // 更新任务状态为执行中
+    await prisma.deployment.update({
+      where: { id: deploymentId },
+      data: {
+        status: 'deploying',
+        updatedAt: new Date()
+      }
+    })
+
+    // 执行Jenkins任务
+    const jenkinsJobIds = deployment.jenkinsJobIds as string[]
+    if (!jenkinsJobIds || jenkinsJobIds.length === 0) {
+      await prisma.deployment.update({
+        where: { id: deploymentId },
+        data: { status: 'failed' }
+      })
+      return NextResponse.json({
+        success: false,
+        error: '没有配置Jenkins任务'
+      }, { status: 400 })
+    }
+
+    const results = []
+
+    for (const jobId of jenkinsJobIds) {
+      try {
+        console.log(`🔄 执行Jenkins任务: ${jobId}`)
+
+        // 构建认证信息
+        const auth = Buffer.from(`${jenkinsConfig.username}:${jenkinsConfig.apiToken}`).toString('base64')
+
+        // 调用Jenkins API执行任务
+        const buildResponse = await fetch(`${jenkinsConfig.serverUrl}/job/${jobId}/build`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/json',
+            'User-Agent': 'Wuhr-AI-Ops/1.0'
+          },
+          signal: AbortSignal.timeout(30000)
+        })
+
+        if (buildResponse.ok) {
+          console.log(`✅ Jenkins任务 ${jobId} 触发成功`)
+
+          // 获取队列信息
+          const queueLocation = buildResponse.headers.get('Location')
+          let queueId = null
+          let queueUrl = null
+
+          if (queueLocation) {
+            const queueMatch = queueLocation.match(/\/queue\/item\/(\d+)\//)
+            if (queueMatch) {
+              queueId = parseInt(queueMatch[1])
+              queueUrl = queueLocation
+              console.log(`📋 Jenkins队列ID: ${queueId}`)
+            }
+          }
+
+          // 更新部署任务的Jenkins队列信息
+          if (queueId) {
+            await prisma.deployment.update({
+              where: { id: deploymentId },
+              data: {
+                jenkinsQueueId: queueId,
+                jenkinsQueueUrl: queueUrl,
+                updatedAt: new Date()
+              }
+            })
+          }
+
+          results.push({
+            jobId,
+            success: true,
+            message: '任务触发成功',
+            queueId,
+            queueUrl
+          })
+        } else {
+          console.error(`❌ Jenkins任务 ${jobId} 触发失败: ${buildResponse.status}`)
+          const errorText = await buildResponse.text().catch(() => 'Unknown error')
+          results.push({
+            jobId,
+            success: false,
+            message: `触发失败: HTTP ${buildResponse.status} - ${errorText}`
+          })
+        }
+      } catch (error: any) {
+        console.error(`❌ Jenkins任务 ${jobId} 执行异常:`, error)
+        results.push({
+          jobId,
+          success: false,
+          message: `执行异常: ${error.message}`
+        })
+      }
+    }
+
+    // 判断整体执行结果
+    const allSuccess = results.every(r => r.success)
+    const finalStatus = allSuccess ? 'success' : 'failed'
+
+    // 更新最终状态
+    await prisma.deployment.update({
+      where: { id: deploymentId },
+      data: {
+        status: finalStatus,
+        updatedAt: new Date()
+      }
+    })
+
+    console.log(`🎯 Jenkins部署任务执行完成，最终状态: ${finalStatus}`)
+
+    return NextResponse.json({
+      success: true,
+      message: `Jenkins任务执行${allSuccess ? '成功' : '部分失败'}`,
+      data: {
+        deploymentId,
+        finalStatus,
+        results
+      }
+    })
 
   } catch (error) {
-    console.error('❌ 执行部署任务失败:', error)
+    console.error('❌ 执行Jenkins部署任务失败:', error)
+
+    // 更新任务状态为失败
+    try {
+      const errorPrisma = await getPrismaClient()
+      await errorPrisma.deployment.update({
+        where: { id: params.id },
+        data: {
+          status: 'failed',
+          updatedAt: new Date()
+        }
+      })
+    } catch (updateError) {
+      console.error('更新任务状态失败:', updateError)
+    }
+
     return NextResponse.json({
       success: false,
-      error: '执行部署任务失败'
+      error: '执行Jenkins任务时发生错误',
+      details: error instanceof Error ? error.message : '未知错误'
     }, { status: 500 })
   }
 }

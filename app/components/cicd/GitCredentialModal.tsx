@@ -31,6 +31,7 @@ interface GitCredentialModalProps {
   visible: boolean
   onCancel: () => void
   onSuccess: () => void
+  editingCredential?: any // 编辑的认证配置
 }
 
 import { GitCredentialFormData } from '../../types/access-management'
@@ -41,7 +42,8 @@ type GitCredentialForm = GitCredentialFormData
 const GitCredentialModal: React.FC<GitCredentialModalProps> = ({
   visible,
   onCancel,
-  onSuccess
+  onSuccess,
+  editingCredential
 }) => {
   const [form] = Form.useForm<GitCredentialForm>()
   const [loading, setLoading] = useState(false)
@@ -258,7 +260,7 @@ const GitCredentialModal: React.FC<GitCredentialModalProps> = ({
       title={
         <Space>
           <SafetyOutlined />
-          配置Git认证
+          {editingCredential ? '编辑Git认证' : '配置Git认证'}
         </Space>
       }
       open={visible}

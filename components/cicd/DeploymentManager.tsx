@@ -17,7 +17,10 @@ import {
   Tag,
   DatePicker,
   Tooltip,
-  Checkbox
+  Checkbox,
+  Switch,
+  Divider,
+  Alert
 } from 'antd'
 import {
   RocketOutlined,
@@ -37,6 +40,12 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import OptimizedDeploymentLogViewer from './OptimizedDeploymentLogViewer'
+import JenkinsDeploymentLogViewer from './JenkinsDeploymentLogViewer'
+import JenkinsDeploymentEditModal from './JenkinsDeploymentEditModal'
+import UserSelector from '../../app/components/common/UserSelector'
+import ServerSelector from '../../app/components/common/ServerSelector'
+import TemplateSelector from '../../app/components/common/TemplateSelector'
+import Link from 'next/link'
 
 const { Title, Text } = Typography
 const { Option } = Select
@@ -97,9 +106,12 @@ interface DeploymentManagerProps {
 const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
   const [deployments, setDeployments] = useState<Deployment[]>([])
   const [projects, setProjects] = useState<Project[]>([])
+  const [jenkinsJobs, setJenkinsJobs] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [createModalVisible, setCreateModalVisible] = useState(false)
+  const [createJenkinsModalVisible, setCreateJenkinsModalVisible] = useState(false)
   const [editModalVisible, setEditModalVisible] = useState(false)
+  const [jenkinsEditModalVisible, setJenkinsEditModalVisible] = useState(false)
   const [editingDeployment, setEditingDeployment] = useState<Deployment | null>(null)
   const [users, setUsers] = useState<any[]>([])
   const [requireApproval, setRequireApproval] = useState(false)
@@ -111,10 +123,12 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
 
   const [form] = Form.useForm()
   const [editForm] = Form.useForm()
+  const [jenkinsForm] = Form.useForm()
   const [deployingIds, setDeployingIds] = useState<Set<string>>(new Set())
   const [detailModalVisible, setDetailModalVisible] = useState(false)
   const [selectedDeployment, setSelectedDeployment] = useState<Deployment | null>(null)
   const [logViewerVisible, setLogViewerVisible] = useState(false)
+  const [jenkinsLogViewerVisible, setJenkinsLogViewerVisible] = useState(false)
   const [selectedDeploymentForLogs, setSelectedDeploymentForLogs] = useState<Deployment | null>(null)
 
   // 优化的数据刷新函数
@@ -122,18 +136,20 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
     loadDeployments(pagination.current)
   }, [pagination.current])
 
-  // 状态轮询 - 只在有部署任务运行时轮询
+  // 状态轮询 - 在有部署任务运行或待审批时轮询
   useEffect(() => {
-    const hasDeployingTasks = deployments.some(d => d.status === 'deploying')
+    const hasActiveOrPendingTasks = deployments.some(d =>
+      d.status === 'deploying' || d.status === 'pending'
+    )
 
-    if (!hasDeployingTasks) {
-      return // 没有正在部署的任务，不需要轮询
+    if (!hasActiveOrPendingTasks) {
+      return // 没有活跃或待审批的任务，不需要轮询
     }
 
-    console.log('🔄 开始轮询部署状态，检测到正在部署的任务')
+    console.log('🔄 开始轮询部署状态，检测到活跃或待审批的任务')
     const interval = setInterval(() => {
       refreshData()
-    }, 3000) // 每3秒检查一次
+    }, 5000) // 每5秒检查一次（降低频率避免过度请求）
 
     return () => {
       console.log('⏹️ 停止轮询部署状态')
@@ -195,6 +211,26 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
     }
   }
 
+  // 加载Jenkins任务列表
+  const loadJenkinsJobs = async () => {
+    try {
+      const response = await fetch('/api/jenkins/jobs')
+      const result = await response.json()
+
+      if (result.success) {
+        setJenkinsJobs(result.data || [])
+      } else {
+        console.warn('加载Jenkins任务失败:', result.error)
+        // 不显示错误消息，因为Jenkins配置可能是可选的
+      }
+    } catch (error) {
+      console.warn('加载Jenkins任务失败:', error)
+      // 不显示错误消息，因为Jenkins配置可能是可选的
+    }
+  }
+
+
+
 
 
   // 加载用户列表
@@ -223,8 +259,7 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
         body: JSON.stringify({
           ...values,
           scheduledAt: values.scheduledAt ? values.scheduledAt.toISOString() : undefined,
-          requireApproval: values.requireApproval || false,
-          approvers: values.approvers || []
+          requireApproval: true, // 所有部署任务都需要审批
         }),
       })
 
@@ -245,6 +280,42 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
     } catch (error) {
       console.error('创建部署任务失败:', error)
       message.error('创建部署任务失败')
+    }
+  }
+
+  // 创建Jenkins部署任务
+  const handleCreateJenkinsDeployment = async (values: any) => {
+    try {
+      const response = await fetch('/api/cicd/deployments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...values,
+          scheduledAt: values.scheduledAt ? values.scheduledAt.toISOString() : undefined,
+          requireApproval: true, // 所有部署任务都需要审批
+          isJenkinsDeployment: true, // 标记为Jenkins部署任务
+        }),
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success) {
+          message.success(result.message || 'Jenkins部署任务创建成功')
+          setCreateJenkinsModalVisible(false)
+          jenkinsForm.resetFields()
+          loadDeployments(pagination.current)
+        } else {
+          message.error(result.error || '创建Jenkins部署任务失败')
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        message.error(errorData.error || '创建Jenkins部署任务失败')
+      }
+    } catch (error) {
+      console.error('创建Jenkins部署任务失败:', error)
+      message.error('创建Jenkins部署任务失败')
     }
   }
 
@@ -304,15 +375,17 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
 
   // 开始部署
   const handleStartDeployment = async (deployment: Deployment) => {
-    if (deployment.status !== 'approved' && deployment.status !== 'scheduled') {
-      message.warning('只有已审批或已计划的部署任务才能开始部署')
+    if (deployment.status !== 'approved' && deployment.status !== 'scheduled' && deployment.status !== 'failed') {
+      message.warning('只有已审批、已计划或失败的部署任务才能开始部署')
       return
     }
 
     setDeployingIds(prev => new Set(prev).add(deployment.id))
 
     try {
-      const response = await fetch(`/api/cicd/deployments/${deployment.id}/start`, {
+      console.log(`🚀 开始执行部署: ${deployment.name}`)
+
+      const response = await fetch(`/api/cicd/deployments/${deployment.id}/execute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -322,8 +395,13 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
       const result = await response.json()
 
       if (result.success) {
-        message.success('部署已开始')
+        message.success('部署任务已开始执行，请查看实时日志了解进度')
         loadDeployments(pagination.current)
+
+        // 自动打开日志查看器
+        setTimeout(() => {
+          handleViewLogs(deployment)
+        }, 1000)
       } else {
         message.error(result.error || '启动部署失败')
       }
@@ -339,6 +417,78 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
     }
   }
 
+  // 手动执行部署
+  const handleManualExecute = async (deployment: Deployment) => {
+    if (deployment.status !== 'approved') {
+      message.warning('只有审批通过的部署任务才能手动执行')
+      return
+    }
+
+    // 确认对话框
+    Modal.confirm({
+      title: '确认手动执行部署',
+      content: (
+        <div>
+          <p>您确定要手动执行以下部署任务吗？</p>
+          <div style={{ marginTop: 12, padding: 12, backgroundColor: '#f5f5f5', borderRadius: 4 }}>
+            <p><strong>部署名称：</strong>{deployment.name}</p>
+            <p><strong>目标环境：</strong>{deployment.environment}</p>
+            <p><strong>项目：</strong>{deployment.project?.name || (deployment as any).jenkinsJobName || '未知项目'}</p>
+            <p><strong>版本：</strong>{deployment.version || '-'}</p>
+          </div>
+          <p style={{ marginTop: 12, color: '#fa8c16' }}>
+            ⚠️ 手动执行将立即开始部署流程，请确保目标环境准备就绪。
+          </p>
+        </div>
+      ),
+      okText: '确认执行',
+      cancelText: '取消',
+      okType: 'primary',
+      icon: <PlayCircleOutlined style={{ color: '#1890ff' }} />,
+      onOk: async () => {
+        setDeployingIds(prev => new Set(prev).add(deployment.id))
+
+        try {
+          console.log(`🔧 手动执行部署: ${deployment.name}`)
+
+          const response = await fetch(`/api/cicd/deployments/${deployment.id}/execute`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              manualExecution: true, // 标识为手动执行
+              executionReason: '用户手动触发执行'
+            })
+          })
+
+          const result = await response.json()
+
+          if (result.success) {
+            message.success('部署任务已手动启动，请查看实时日志了解进度')
+            loadDeployments(pagination.current)
+
+            // 自动打开日志查看器
+            setTimeout(() => {
+              handleViewLogs(deployment)
+            }, 1000)
+          } else {
+            message.error(result.error || '手动执行部署失败')
+          }
+        } catch (error) {
+          console.error('手动执行部署失败:', error)
+          message.error('手动执行部署失败')
+        } finally {
+          setDeployingIds(prev => {
+            const newSet = new Set(prev)
+            newSet.delete(deployment.id)
+            return newSet
+          })
+        }
+      }
+    })
+  }
+
   // 停止部署
   const handleStopDeployment = async (deployment: Deployment) => {
     if (deployment.status !== 'deploying') {
@@ -347,8 +497,10 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
     }
 
     try {
-      const response = await fetch(`/api/cicd/deployments/${deployment.id}/stop`, {
-        method: 'POST'
+      console.log(`⏹️ 停止部署: ${deployment.name}`)
+
+      const response = await fetch(`/api/cicd/deployments/${deployment.id}/execute`, {
+        method: 'DELETE'
       })
 
       const result = await response.json()
@@ -400,7 +552,13 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
   // 查看实时日志
   const handleViewLogs = (deployment: Deployment) => {
     setSelectedDeploymentForLogs(deployment)
-    setLogViewerVisible(true)
+
+    // 根据部署任务类型选择不同的日志查看器
+    if ((deployment as any).isJenkinsDeployment) {
+      setJenkinsLogViewerVisible(true)
+    } else {
+      setLogViewerVisible(true)
+    }
   }
 
   // 状态标签渲染
@@ -521,6 +679,7 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
         const canStart = record.status === 'approved' || record.status === 'scheduled'
         const canStop = record.status === 'deploying'
         const canRollback = record.status === 'success' || record.status === 'failed'
+        const canManualExecute = record.status === 'approved' // 只有审批通过后才能手动执行
         const isDeploying = deployingIds.has(record.id)
 
         return (
@@ -541,7 +700,25 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
               />
             </Tooltip>
 
-            {canStart && (
+            {/* 手动执行按钮 - 只在审批通过时显示 */}
+            {canManualExecute && (
+              <Tooltip title="手动执行部署">
+                <Button
+                  type="text"
+                  icon={<PlayCircleOutlined />}
+                  disabled={isDeploying}
+                  loading={isDeploying}
+                  onClick={() => handleManualExecute(record)}
+                  style={{
+                    color: '#1890ff',
+                    fontWeight: 'bold'
+                  }}
+                />
+              </Tooltip>
+            )}
+
+            {/* 自动开始部署按钮 - 在计划任务或失败重试时显示 */}
+            {canStart && !canManualExecute && (
               <Tooltip title="开始部署">
                 <Button
                   type="text"
@@ -588,11 +765,17 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
                 disabled={record.status === 'deploying'}
                 onClick={() => {
                   setEditingDeployment(record)
-                  editForm.setFieldsValue({
-                    ...record,
-                    scheduledAt: record.scheduledAt ? dayjs(record.scheduledAt) : undefined
-                  })
-                  setEditModalVisible(true)
+
+                  // 根据部署任务类型打开不同的编辑模态框
+                  if ((record as any).isJenkinsDeployment) {
+                    setJenkinsEditModalVisible(true)
+                  } else {
+                    editForm.setFieldsValue({
+                      ...record,
+                      scheduledAt: record.scheduledAt ? dayjs(record.scheduledAt) : undefined
+                    })
+                    setEditModalVisible(true)
+                  }
                 }}
               />
             </Tooltip>
@@ -622,6 +805,7 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
   useEffect(() => {
     loadDeployments()
     loadProjects()
+    loadJenkinsJobs()
     loadUsers()
 
     // 设置定时刷新，每30秒检查一次状态更新
@@ -645,19 +829,89 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [pagination.current])
 
+  // 监听实时通知，当收到部署状态更新时刷新数据
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'deployment_status_update') {
+        console.log('🔄 收到部署状态更新通知，刷新部署列表')
+        loadDeployments(pagination.current)
+        // 清除通知标记
+        localStorage.removeItem('deployment_status_update')
+      }
+    }
+
+    window.addEventListener('storage', handleStorageChange)
+    return () => window.removeEventListener('storage', handleStorageChange)
+  }, [pagination.current])
+
+  // 轮询广播消息，实现实时数据同步
+  useEffect(() => {
+    let lastCheckTime = new Date().toISOString()
+
+    const checkBroadcastMessages = async () => {
+      try {
+        const response = await fetch(`/api/notifications/broadcast?type=deployment_status_update&since=${lastCheckTime}`)
+        const result = await response.json()
+
+        if (result.success && result.data.length > 0) {
+          console.log('📡 收到广播消息，刷新部署列表:', result.data.length)
+          loadDeployments(pagination.current)
+          lastCheckTime = new Date().toISOString()
+        }
+      } catch (error) {
+        console.error('❌ 检查广播消息失败:', error)
+      }
+    }
+
+    // 每5秒检查一次广播消息
+    const broadcastInterval = setInterval(checkBroadcastMessages, 5000)
+
+    return () => clearInterval(broadcastInterval)
+  }, [pagination.current])
+
   return (
     <div>
+      {/* Jenkins部署任务提示 */}
+      <Alert
+        message="Jenkins部署任务管理"
+        description={
+          <div>
+            <p>Jenkins部署任务现在有专门的管理页面，提供更好的配置和执行体验。</p>
+            <Link href="/cicd/jenkins-deployments">
+              <Button type="primary" size="small" icon={<RocketOutlined />}>
+                前往Jenkins部署任务管理
+              </Button>
+            </Link>
+          </div>
+        }
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+      />
+
       {/* 操作栏 */}
       <Card className="glass-card mb-4">
         <div className="flex justify-between items-center">
           <div>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setCreateModalVisible(true)}
-            >
-              创建部署任务
-            </Button>
+            <Space>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setCreateModalVisible(true)}
+              >
+                创建部署任务
+              </Button>
+              {/* Jenkins部署任务创建功能已迁移到专门的Jenkins部署任务页面 */}
+              {/*
+              <Button
+                type="default"
+                icon={<RocketOutlined />}
+                onClick={() => setCreateJenkinsModalVisible(true)}
+              >
+                创建Jenkins部署任务
+              </Button>
+              */}
+            </Space>
           </div>
           <div>
             <Button
@@ -723,6 +977,8 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
                     description: `${selectedProject.name} 项目部署任务`
                   })
                 }
+
+
               }}
             >
               {projects.map(project => (
@@ -733,40 +989,7 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
             </Select>
           </Form.Item>
 
-          {/* 项目信息显示 */}
-          {form.getFieldValue('projectId') && (
-            <Card size="small" className="mb-4" title="项目配置信息">
-              {(() => {
-                const selectedProject = projects.find(p => p.id === form.getFieldValue('projectId'))
-                if (!selectedProject) return null
-
-                return (
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <Text strong>仓库地址：</Text>
-                      <Text className="block text-gray-600">{selectedProject.repositoryUrl}</Text>
-                    </div>
-                    <div>
-                      <Text strong>分支：</Text>
-                      <Text className="block text-gray-600">{selectedProject.branch}</Text>
-                    </div>
-                    <div>
-                      <Text strong>构建脚本：</Text>
-                      <Text className="block text-gray-600 font-mono text-xs">
-                        {selectedProject.buildScript || '未配置'}
-                      </Text>
-                    </div>
-                    <div>
-                      <Text strong>部署脚本：</Text>
-                      <Text className="block text-gray-600 font-mono text-xs">
-                        {selectedProject.deployScript || '未配置'}
-                      </Text>
-                    </div>
-                  </div>
-                )
-              })()}
-            </Card>
-          )}
+          {/* 项目配置信息已删除 */}
 
           <Form.Item
             name="name"
@@ -802,6 +1025,47 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
             <Input placeholder="输入版本号" />
           </Form.Item>
 
+          <Divider orientation="left">部署配置</Divider>
+
+          <Form.Item
+            name="templateId"
+            label="部署模板"
+            tooltip="选择预定义的部署模板，可以简化部署配置"
+          >
+            <TemplateSelector
+              placeholder="选择部署模板（可选）"
+              allowClear
+              style={{ width: '100%' }}
+
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="deploymentHosts"
+            label="部署主机"
+            rules={[{ required: true, message: '请选择部署主机' }]}
+            tooltip="选择要部署到的目标主机"
+          >
+            <ServerSelector
+              placeholder="选择部署主机"
+              mode="multiple"
+              style={{ width: '100%' }}
+              environment={form.getFieldValue('environment')}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="notificationUsers"
+            label="通知人员"
+            tooltip="选择在部署状态变更时需要通知的人员"
+          >
+            <UserSelector
+              placeholder="选择通知人员（可选）"
+              mode="multiple"
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+
 
 
           <Form.Item
@@ -815,35 +1079,20 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
             />
           </Form.Item>
 
-          {/* 审批配置 */}
-          <Form.Item
-            name="requireApproval"
-            valuePropName="checked"
-          >
-            <Checkbox onChange={(e) => setRequireApproval(e.target.checked)}>
-              需要审批
-            </Checkbox>
-          </Form.Item>
+          <Divider orientation="left">审批配置</Divider>
 
-          {requireApproval && (
-            <Form.Item
-              name="approvers"
-              label="审批人"
-              rules={[{ required: requireApproval, message: '请选择审批人' }]}
-            >
-              <Select
-                mode="multiple"
-                placeholder="选择审批人"
-                style={{ width: '100%' }}
-              >
-                {users.map(user => (
-                  <Option key={user.id} value={user.id}>
-                    {user.username} ({user.email})
-                  </Option>
-                ))}
-              </Select>
-            </Form.Item>
-          )}
+          <Form.Item
+            name="approvalUsers"
+            label="审批人员"
+            rules={[{ required: true, message: '请选择审批人员' }]}
+            tooltip="选择有权限审批此部署任务的人员"
+          >
+            <UserSelector
+              placeholder="选择审批人员"
+              mode="multiple"
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
 
           <Form.Item className="mb-0">
             <Space className="w-full justify-end">
@@ -912,7 +1161,33 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
             <Input placeholder="输入版本号（可选）" />
           </Form.Item>
 
+          <Divider orientation="left">部署配置</Divider>
 
+          <Form.Item
+            name="deploymentHosts"
+            label="部署主机"
+            rules={[{ required: true, message: '请选择部署主机' }]}
+            tooltip="选择要部署到的目标主机"
+          >
+            <ServerSelector
+              placeholder="选择部署主机"
+              mode="multiple"
+              style={{ width: '100%' }}
+              environment={editForm.getFieldValue('environment')}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="notificationUsers"
+            label="通知人员"
+            tooltip="选择在部署状态变更时需要通知的人员"
+          >
+            <UserSelector
+              placeholder="选择通知人员（可选）"
+              mode="multiple"
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
 
           <Form.Item
             name="scheduledAt"
@@ -921,6 +1196,21 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
             <DatePicker
               showTime
               placeholder="选择计划部署时间（可选）"
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+
+          <Divider orientation="left">审批配置</Divider>
+
+          <Form.Item
+            name="approvalUsers"
+            label="审批人员"
+            rules={[{ required: true, message: '请选择审批人员' }]}
+            tooltip="选择有权限审批此部署任务的人员"
+          >
+            <UserSelector
+              placeholder="选择审批人员"
+              mode="multiple"
               style={{ width: '100%' }}
             />
           </Form.Item>
@@ -936,6 +1226,163 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
               </Button>
               <Button type="primary" htmlType="submit">
                 保存修改
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 创建Jenkins部署任务模态框 */}
+      <Modal
+        title="创建Jenkins部署任务"
+        open={createJenkinsModalVisible}
+        onCancel={() => {
+          setCreateJenkinsModalVisible(false)
+          jenkinsForm.resetFields()
+        }}
+        footer={null}
+        width={600}
+      >
+        <Form
+          form={jenkinsForm}
+          layout="vertical"
+          onFinish={handleCreateJenkinsDeployment}
+        >
+          <Form.Item
+            name="name"
+            label="部署名称"
+            rules={[{ required: true, message: '请输入部署名称' }]}
+          >
+            <Input placeholder="输入部署名称" />
+          </Form.Item>
+
+          <Form.Item
+            name="description"
+            label="描述"
+          >
+            <TextArea rows={3} placeholder="输入部署描述" />
+          </Form.Item>
+
+          <Form.Item
+            name="environment"
+            label="环境"
+            rules={[{ required: true, message: '请选择环境' }]}
+          >
+            <Select placeholder="选择环境">
+              <Option value="dev">开发环境</Option>
+              <Option value="test">测试环境</Option>
+              <Option value="prod">生产环境</Option>
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="version"
+            label="版本号"
+          >
+            <Input placeholder="输入版本号" />
+          </Form.Item>
+
+          <Divider orientation="left">Jenkins配置</Divider>
+
+          <Form.Item
+            name="jenkinsJobIds"
+            label="Jenkins任务"
+            rules={[{ required: true, message: '请选择至少一个Jenkins任务' }]}
+            tooltip="选择要执行的Jenkins任务（支持多选）"
+          >
+            <Select
+              mode="multiple"
+              placeholder="选择Jenkins任务（支持多选）"
+              style={{ width: '100%' }}
+              showSearch
+              maxTagCount="responsive"
+              filterOption={(input, option) =>
+                String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+              optionLabelProp="label"
+            >
+              {jenkinsJobs.map(job => (
+                <Option key={job.id} value={job.id} label={job.name}>
+                  <div style={{
+                    padding: '4px 0',
+                    maxWidth: '100%',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{
+                      fontWeight: 'bold',
+                      fontSize: '14px',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      maxWidth: '100%'
+                    }}>
+                      {job.name}
+                    </div>
+                    <div style={{
+                      fontSize: '12px',
+                      color: '#666',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      maxWidth: '100%',
+                      marginTop: '2px'
+                    }}>
+                      {job.description || job.url}
+                    </div>
+                  </div>
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="scheduledAt"
+            label="计划部署时间"
+          >
+            <DatePicker
+              showTime
+              placeholder="选择计划部署时间（可选）"
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+
+          <Divider orientation="left">人员配置</Divider>
+
+          <Form.Item
+            name="approvalUsers"
+            label="审批人员"
+            rules={[{ required: true, message: '请选择审批人员' }]}
+            tooltip="选择有权限审批此部署任务的人员"
+          >
+            <UserSelector
+              placeholder="选择审批人员"
+              mode="multiple"
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="notificationUsers"
+            label="通知人员"
+            tooltip="选择在部署状态变更时需要通知的人员"
+          >
+            <UserSelector
+              placeholder="选择通知人员（可选）"
+              mode="multiple"
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+
+          <Form.Item className="mb-0">
+            <Space className="w-full justify-end">
+              <Button onClick={() => {
+                setCreateJenkinsModalVisible(false)
+                jenkinsForm.resetFields()
+              }}>
+                取消
+              </Button>
+              <Button type="primary" htmlType="submit">
+                创建
               </Button>
             </Space>
           </Form.Item>
@@ -984,7 +1431,12 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
                 </div>
                 <div>
                   <Text strong>所属项目：</Text>
-                  <Text>{selectedDeployment.project.name}</Text>
+                  <Text>
+                    {(selectedDeployment as any).isJenkinsDeployment
+                      ? ((selectedDeployment as any).jenkinsJobName || selectedDeployment.project?.name || '未知Jenkins任务')
+                      : (selectedDeployment.project?.name || '未知项目')
+                    }
+                  </Text>
                 </div>
                 <div>
                   <Text strong>构建号：</Text>
@@ -1003,10 +1455,10 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
               <Card size="small" title="审批信息" className="mb-4">
                 <div className="space-y-2">
                   {selectedDeployment.approvals.map((approval) => (
-                    <div key={approval.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    <div key={approval.id} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
                       <div>
                         <Text strong>审批人：</Text>
-                        <Text>{approval.approver.username}</Text>
+                        <Text>{approval.approver?.username || '未知用户'}</Text>
                         <Text className="ml-4 text-gray-500">级别 {approval.level}</Text>
                       </div>
                       <div>
@@ -1026,26 +1478,45 @@ const DeploymentManager: React.FC<DeploymentManagerProps> = ({ projectId }) => {
               </Card>
             )}
 
-            {selectedDeployment.logs && (
-              <Card size="small" title="部署日志">
-                <div
-                  className="bg-black text-green-400 p-3 rounded font-mono text-sm max-h-64 overflow-y-auto"
-                  style={{ whiteSpace: 'pre-wrap' }}
-                >
-                  {selectedDeployment.logs}
-                </div>
-              </Card>
-            )}
+
           </div>
         )}
       </Modal>
 
-      {/* 优化的实时日志查看器 */}
+      {/* Jenkins部署任务编辑模态框 */}
+      <JenkinsDeploymentEditModal
+        visible={jenkinsEditModalVisible}
+        deployment={editingDeployment}
+        onCancel={() => {
+          setJenkinsEditModalVisible(false)
+          setEditingDeployment(null)
+        }}
+        onSuccess={() => {
+          setJenkinsEditModalVisible(false)
+          setEditingDeployment(null)
+          loadDeployments(pagination.current)
+        }}
+      />
+
+      {/* 持续部署实时日志查看器 */}
       <OptimizedDeploymentLogViewer
         visible={logViewerVisible}
         onClose={() => setLogViewerVisible(false)}
         deploymentId={selectedDeploymentForLogs?.id || ''}
         deploymentName={selectedDeploymentForLogs?.name || ''}
+        isJenkinsDeployment={(selectedDeploymentForLogs as any)?.isJenkinsDeployment || false}
+        jenkinsJobId={(selectedDeploymentForLogs as any)?.jenkinsJobId || undefined}
+        jenkinsBuildNumber={(selectedDeploymentForLogs as any)?.buildNumber || undefined}
+      />
+
+      {/* Jenkins部署实时日志查看器 */}
+      <JenkinsDeploymentLogViewer
+        visible={jenkinsLogViewerVisible}
+        onClose={() => setJenkinsLogViewerVisible(false)}
+        deploymentId={selectedDeploymentForLogs?.id || ''}
+        deploymentName={selectedDeploymentForLogs?.name || ''}
+        jenkinsJobIds={(selectedDeploymentForLogs as any)?.jenkinsJobIds as string[] || []}
+        jenkinsJobName={(selectedDeploymentForLogs as any)?.jenkinsJobName || undefined}
       />
     </div>
   )

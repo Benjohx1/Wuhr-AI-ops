@@ -146,17 +146,36 @@ async function executeKubeletWuhrai(request: KubeletWuhraiRequest): Promise<{ su
         stderr: stderr.substring(0, 500)
       })
 
-      // 改进的ANSI转义序列清理
+      // 完全清理ANSI转义序列和控制字符
       const cleanOutput = (text: string) => {
         return text
-          .replace(/\x1b\[[0-9;]*m/g, '') // 移除ANSI颜色代码
-          .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '') // 移除其他ANSI序列
-          .replace(/\x1b\[[\d;]*[A-Za-z]/g, '') // 移除更多ANSI序列
-          .replace(/\x1b\]/g, '') // 移除其他转义字符
+          // 移除所有ANSI转义序列
+          .replace(/\x1b\[[0-9;]*[mGKHfABCDsuJnpqr]/g, '') // 标准ANSI序列
+          .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '') // 其他ANSI序列
+          .replace(/\x1b\[[\d;]*[A-Za-z]/g, '') // 数字参数ANSI序列
+          .replace(/\x1b\[[?]?[0-9;]*[hlc]/g, '') // 私有模式序列
+          .replace(/\x1b\]/g, '') // OSC序列开始
+          .replace(/\x1b\\/g, '') // OSC序列结束
+          .replace(/\x1b[()][AB012]/g, '') // 字符集选择
+          .replace(/\x1b[=>]/g, '') // 键盘模式
+          .replace(/\x1b[78]/g, '') // 保存/恢复光标
+          .replace(/\x1b[DEHMN]/g, '') // 其他控制序列
+          .replace(/\x1b\[[\d;]*[~]/g, '') // 功能键序列
+          .replace(/\x1b\[[0-9;]*[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/g, '') // 所有大写字母结尾的序列
+          .replace(/\x1b\[[0-9;]*[abcdefghijklmnopqrstuvwxyz]/g, '') // 所有小写字母结尾的序列
+          // 移除其他控制字符
+          .replace(/\x07/g, '') // 响铃
+          .replace(/\x08/g, '') // 退格
+          .replace(/\x0c/g, '') // 换页
+          .replace(/\x0e/g, '') // 移位输出
+          .replace(/\x0f/g, '') // 移位输入
+          .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '') // 其他控制字符
+          // 统一换行符和清理空白
           .replace(/\r\n/g, '\n') // 统一换行符
           .replace(/\r/g, '\n') // 统一换行符
-          .replace(/\n\s*\n/g, '\n') // 移除多余空行
-          .trim()
+          .replace(/\n\s*\n\s*\n/g, '\n\n') // 移除多余空行，保留双换行
+          .replace(/^\s+|\s+$/g, '') // 移除首尾空白
+          .replace(/[ \t]+/g, ' ') // 合并多个空格和制表符
       }
 
       const cleanStdout = cleanOutput(stdout)
@@ -221,7 +240,8 @@ export async function POST(request: NextRequest) {
       systemPrompt,
       hostId, // 远程主机ID
       apiKey, // 前端传递的API密钥
-      baseUrl // 前端传递的Base URL
+      baseUrl, // 前端传递的Base URL
+      isK8sMode = false // K8s命令模式标识
     } = body
 
     // 验证必需参数
@@ -322,7 +342,8 @@ export async function POST(request: NextRequest) {
       autoExecution: autoExecution,
       hasSystemPrompt: !!systemPrompt,
       hasApiKey: !!finalApiKey,
-      hasBaseUrl: !!finalBaseUrl
+      hasBaseUrl: !!finalBaseUrl,
+      isK8sMode: isK8sMode
     })
 
     // 判断执行模式
@@ -359,16 +380,40 @@ export async function POST(request: NextRequest) {
         // 调用专用的远程kubelet-wuhrai API
         const remoteApiUrl = new URL('/api/remote/kubelet-wuhrai', request.url)
 
+        // 构建环境约束的系统提示词（远程执行）
+        let environmentConstraint = ''
+        if (isK8sMode) {
+          environmentConstraint = `
+⚠️ **严格约束：当前为K8s集群命令模式**
+- 只能执行Kubernetes相关命令（kubectl等）
+- 禁止执行任何Linux系统命令（如ls、cat、ps、top等）
+- 所有操作都必须针对Kubernetes集群
+- 如果用户要求执行Linux系统命令，请明确告知当前为K8s模式，需要切换到Linux模式
+`
+        } else {
+          environmentConstraint = `
+⚠️ **严格约束：当前为Linux系统命令模式**  
+- 只能执行Linux系统命令（如ls、cat、ps、top、systemctl等）
+- 禁止执行任何Kubernetes命令（如kubectl等）
+- 所有操作都针对本地Linux系统
+- 如果用户要求执行Kubernetes命令，请明确告知当前为Linux模式，需要切换到K8s模式
+`
+        }
+
+        // 构建带环境约束的完整消息（远程执行）
+        const constrainedMessage = `${environmentConstraint}\n\n用户请求：${message}`
+
         const remoteRequest = {
           hostId,
-          message,
+          message: constrainedMessage,
           model: finalModel,
           apiKey: finalApiKey,
           baseUrl: finalBaseUrl,
           provider,
           temperature,
           maxTokens,
-          systemPrompt
+          systemPrompt,
+          isK8sMode
         }
 
 
@@ -436,16 +481,40 @@ export async function POST(request: NextRequest) {
         // kubelet-wuhrai程序本身已经有内置的系统提示词
         const fullMessage = message
 
+        // 构建环境约束的系统提示词
+        let environmentConstraint = ''
+        if (isK8sMode) {
+          environmentConstraint = `
+⚠️ **严格约束：当前为K8s集群命令模式**
+- 只能执行Kubernetes相关命令（kubectl等）
+- 禁止执行任何Linux系统命令（如ls、cat、ps、top等）
+- 所有操作都必须针对Kubernetes集群
+- 如果用户要求执行Linux系统命令，请明确告知当前为K8s模式，需要切换到Linux模式
+`
+        } else {
+          environmentConstraint = `
+⚠️ **严格约束：当前为Linux系统命令模式**  
+- 只能执行Linux系统命令（如ls、cat、ps、top、systemctl等）
+- 禁止执行任何Kubernetes命令（如kubectl等）
+- 所有操作都针对本地Linux系统
+- 如果用户要求执行Kubernetes命令，请明确告知当前为Linux模式，需要切换到K8s模式
+`
+        }
+
+        // 构建带环境约束的完整消息
+        const constrainedMessage = `${environmentConstraint}\n\n用户请求：${message}`
+
         // 构建kubelet-wuhrai请求
         const kubeletRequest: KubeletWuhraiRequest = {
-          message: fullMessage,
+          message: constrainedMessage,
           model: finalModel,
           provider: provider,
           apiKey: finalApiKey,
           baseUrl: finalBaseUrl,
           temperature: temperature,
           maxTokens: maxTokens,
-          autoExecution: autoExecution
+          autoExecution: autoExecution,
+          isK8sMode: isK8sMode
         }
 
         console.log('📨 处理聊天请求:', {

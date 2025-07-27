@@ -85,6 +85,9 @@ export function useProjectLogs({
       })
 
       if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('项目日志API不存在，请检查项目配置')
+        }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
 
@@ -150,13 +153,13 @@ export function useProjectLogs({
       eventSource.onerror = (event) => {
         console.error('📡 项目日志连接错误:', event)
         setConnected(false)
-        
-        // 自动重连
-        setTimeout(() => {
-          if (enabled && realtime) {
-            connectRealtime()
-          }
-        }, 5000)
+        setError('日志连接中断')
+
+        // 关闭连接，避免死循环
+        if (eventSourceRef.current) {
+          eventSourceRef.current.close()
+          eventSourceRef.current = null
+        }
       }
 
     } catch (err) {
@@ -178,14 +181,14 @@ export function useProjectLogs({
   useEffect(() => {
     if (!projectId || !enabled) return
 
-    if (realtime) {
-      // 先获取历史日志，然后建立实时连接
-      fetchLogs().then(() => {
-        connectRealtime()
-      })
-    } else {
-      fetchLogs()
-    }
+    // 只获取历史日志，不启用实时连接（避免404死循环）
+    fetchLogs().catch((err) => {
+      console.error('获取项目日志失败:', err)
+      // 如果是404错误，不再重试
+      if (err.message.includes('404')) {
+        setError('项目日志功能暂不可用')
+      }
+    })
 
     return () => {
       // 清理资源
@@ -199,7 +202,7 @@ export function useProjectLogs({
       }
       setConnected(false)
     }
-  }, [projectId, enabled, realtime, fetchLogs, connectRealtime])
+  }, [projectId, enabled, fetchLogs])
 
   // 组件卸载时清理
   useEffect(() => {

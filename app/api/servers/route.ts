@@ -37,10 +37,14 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: servers.map(server => ({
-        ...server,
-        available: server.status === 'online'
-      }))
+      data: {
+        servers: servers.map(server => ({
+          ...server,
+          available: server.status === 'online',
+          environment: server.location || 'unknown' // 添加environment字段
+        })),
+        total: servers.length
+      }
     })
 
   } catch (error) {

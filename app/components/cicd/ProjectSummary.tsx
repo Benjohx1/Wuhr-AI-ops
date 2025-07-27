@@ -96,7 +96,7 @@ const ProjectSummary: React.FC<ProjectSummaryProps> = ({ data, repositoryInfo, d
           </Descriptions.Item>
           <Descriptions.Item label="部署脚本">
             <div className="bg-gray-100 dark:bg-gray-800 p-2 rounded border border-gray-300 dark:border-gray-600 font-mono text-xs text-gray-800 dark:text-gray-200">
-              {data.deployScript || '未配置'}
+              {(data as any).deployScript || '未配置'}
             </div>
           </Descriptions.Item>
           <Descriptions.Item label="默认环境">

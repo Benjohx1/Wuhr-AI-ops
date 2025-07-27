@@ -55,10 +55,17 @@ async function validateGitRepository(
       })
 
       if (credentialRecord) {
-        credentials = decryptCredentials(credentialRecord.encryptedCredentials)
-        platform = credentialRecord.platform
-        authType = credentialRecord.authType
-        console.log('🔐 使用认证配置:', { platform, authType })
+        try {
+          credentials = decryptCredentials(credentialRecord.encryptedCredentials)
+          platform = credentialRecord.platform
+          authType = credentialRecord.authType
+          console.log('🔐 使用认证配置:', { platform, authType })
+        } catch (error) {
+          console.error(`❌ 解密认证配置失败 (ID: ${credentialRecord.id}):`, error instanceof Error ? error.message : String(error))
+          console.log('💡 跳过无效的认证配置，继续查找其他配置')
+          // 解密失败时，将credentials设为null，继续后续逻辑
+          credentials = null
+        }
       }
     } else {
       // 尝试根据URL自动选择默认认证配置
@@ -75,10 +82,16 @@ async function validateGitRepository(
         })
 
         if (defaultCredential) {
-          credentials = decryptCredentials(defaultCredential.encryptedCredentials)
-          platform = defaultCredential.platform
-          authType = defaultCredential.authType
-          console.log('🔐 使用默认认证配置:', { platform, authType })
+          try {
+            credentials = decryptCredentials(defaultCredential.encryptedCredentials)
+            platform = defaultCredential.platform
+            authType = defaultCredential.authType
+            console.log('🔐 使用默认认证配置:', { platform, authType })
+          } catch (error) {
+            console.error(`❌ 解密默认认证配置失败 (ID: ${defaultCredential.id}):`, error instanceof Error ? error.message : String(error))
+            console.log('💡 跳过无效的默认认证配置')
+            credentials = null
+          }
         }
       }
     }

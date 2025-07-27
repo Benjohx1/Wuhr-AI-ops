@@ -41,7 +41,6 @@ const ProjectsPage: React.FC = () => {
   
   // 状态管理
   const [projects, setProjects] = useState<CICDProjectWithDetails[]>([])
-  const [servers, setServers] = useState<any[]>([])
 
   const [loading, setLoading] = useState(false)
   const [createModalVisible, setCreateModalVisible] = useState(false)
@@ -103,18 +102,7 @@ const ProjectsPage: React.FC = () => {
     }
   }
 
-  // 加载服务器列表
-  const loadServers = async () => {
-    try {
-      const response = await fetch('/api/servers')
-      const data = await response.json()
-      if (data.success) {
-        setServers(data.data)
-      }
-    } catch (error) {
-      console.error('加载服务器列表失败:', error)
-    }
-  }
+
 
   // 处理项目创建成功
   const handleCreateSuccess = () => {
@@ -296,7 +284,6 @@ const ProjectsPage: React.FC = () => {
   useEffect(() => {
     if (canRead) {
       loadProjects()
-      loadServers()
     }
   }, [canRead])
 
@@ -323,10 +310,10 @@ const ProjectsPage: React.FC = () => {
         <div className="mb-6">
           <Title level={2} className="mb-2">
             <ProjectOutlined className="mr-2" />
-            项目管理
+            持续集成
           </Title>
           <Paragraph className="text-gray-600 mb-0">
-            管理CI/CD项目，配置代码仓库和构建设置
+            管理CI构建流程，配置代码仓库、构建设置和通知人员
           </Paragraph>
         </div>
 
@@ -539,7 +526,6 @@ const ProjectsPage: React.FC = () => {
           onClose={() => setEnhancedEditModalVisible(false)}
           onSave={handleEnhancedEditSave}
           project={editingProject || undefined}
-          servers={servers}
         />
       </div>
     </MainLayout>

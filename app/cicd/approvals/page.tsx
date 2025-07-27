@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Card, Table, Button, Space, Tag, message, Modal, Input, Typography, Row, Col, Statistic, Badge, Descriptions, Alert } from 'antd'
+import { Card, Table, Button, Space, Tag, message, Modal, Input, Typography, Row, Col, Statistic, Badge, Descriptions, Alert, Spin } from 'antd'
 import { CheckOutlined, CloseOutlined, EyeOutlined, ReloadOutlined, ClockCircleOutlined, ProjectOutlined, UserOutlined } from '@ant-design/icons'
 import MainLayout from '../../components/layout/MainLayout'
 import { useAuth } from '../../hooks/useAuth'
@@ -16,10 +16,11 @@ export default function ApprovalsPage() {
   const { hasPermission } = usePermissions()
   const [loading, setLoading] = useState(true)
   const [approvals, setApprovals] = useState<ApprovalWithRelations[]>([])
+  const [userApprovals, setUserApprovals] = useState<any[]>([])
   const [stats, setStats] = useState<ApprovalStats | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [total, setTotal] = useState(0)
-  const [activeTab, setActiveTab] = useState<'pending' | 'all' | 'my'>('pending')
+  const [activeTab, setActiveTab] = useState<'pending' | 'all' | 'my' | 'users'>('pending')
   const [detailModalVisible, setDetailModalVisible] = useState(false)
   const [selectedApproval, setSelectedApproval] = useState<ApprovalWithRelations | null>(null)
   const [actionModalVisible, setActionModalVisible] = useState(false)
@@ -42,28 +43,43 @@ export default function ApprovalsPage() {
   // 加载统计数据
   const loadStats = async () => {
     try {
+      console.log('📊 [审批管理页面] 开始加载统计数据...')
       const response = await fetch('/api/cicd/approvals/stats')
       const data = await response.json()
 
+      console.log('📊 [审批管理页面] API响应:', {
+        success: data.success,
+        dataKeys: data.data ? Object.keys(data.data) : [],
+        pendingApprovals: data.data?.pendingApprovals,
+        totalApprovals: data.data?.totalApprovals
+      })
+
       if (data.success) {
-        setStats({
-          totalApprovals: data.data.totalApprovals,
-          pendingApprovals: data.data.pendingApprovals,
-          approvedToday: data.data.todayApproved,
-          rejectedToday: data.data.todayRejected,
-          myPendingApprovals: data.data.myPendingApprovals,
-          averageApprovalTime: data.data.averageApprovalTime,
+        const statsData = {
+          totalApprovals: data.data.totalApprovals || 0,
+          pendingApprovals: data.data.pendingApprovals || 0,
+          approvedToday: data.data.todayApproved || 0,
+          rejectedToday: data.data.todayRejected || 0,
+          myPendingApprovals: data.data.myPendingApprovals || 0,
+          averageApprovalTime: data.data.averageApprovalTime || 0,
           // 新增统计数据
-          todayTotal: data.data.todayTotal,
-          weeklyTotal: data.data.weeklyTotal,
-          monthlyTotal: data.data.monthlyTotal,
-          myTodayProcessed: data.data.myTodayProcessed,
-          myWeeklyProcessed: data.data.myWeeklyProcessed,
-          recentApprovals: data.data.recentApprovals
-        })
+          todayTotal: data.data.todayTotal || 0,
+          weeklyTotal: data.data.weeklyTotal || 0,
+          monthlyTotal: data.data.monthlyTotal || 0,
+          myTodayProcessed: data.data.myTodayProcessed || 0,
+          myWeeklyProcessed: data.data.myWeeklyProcessed || 0,
+          recentApprovals: data.data.recentApprovals || []
+        }
+
+        console.log('📊 [审批管理页面] 设置统计数据:', statsData)
+        setStats(statsData)
+      } else {
+        console.error('📊 [审批管理页面] API返回失败:', data.error)
+        message.error(data.error || '加载统计数据失败')
       }
     } catch (error) {
-      console.error('加载统计数据失败:', error)
+      console.error('📊 [审批管理页面] 加载统计数据失败:', error)
+      message.error('加载统计数据失败')
     }
   }
 
@@ -89,6 +105,26 @@ export default function ApprovalsPage() {
   // 加载审批列表
   const loadApprovals = async () => {
     try {
+      if (activeTab === 'users') {
+        // 用户审批记录：从审批记录API获取
+        const params = new URLSearchParams({
+          approvalType: 'user_registration',
+          page: currentPage.toString(),
+          pageSize: '20'
+        })
+
+        const response = await fetch(`/api/approval-records?${params}`)
+        if (response.ok) {
+          const data = await response.json()
+          setUserApprovals(data.data.records || [])
+          setTotal(data.data.total || 0)
+        } else {
+          console.error('获取用户审批记录失败')
+          setUserApprovals([])
+        }
+        return
+      }
+
       let params: URLSearchParams
 
       if (activeTab === 'pending') {
@@ -166,6 +202,16 @@ export default function ApprovalsPage() {
         setComment('')
         setSelectedApproval(null)
 
+        // 触发跨组件数据同步
+        localStorage.setItem('notification_update', JSON.stringify({
+          type: 'approval_action',
+          action: actionType,
+          approvalId: selectedApproval.id,
+          timestamp: new Date().toISOString()
+        }))
+        window.dispatchEvent(new Event('approvalUpdate'))
+        window.dispatchEvent(new Event('notificationUpdate'))
+
         // 重新加载数据
         loadData()
 
@@ -189,6 +235,57 @@ export default function ApprovalsPage() {
 
 
 
+
+  // 获取用户审批记录表格列配置
+  const getUserApprovalColumns = () => [
+    {
+      title: '用户信息',
+      key: 'targetName',
+      render: (record: any) => (
+        <div>
+          <div className="font-medium">{record.targetName}</div>
+          <div className="text-sm text-gray-500">ID: {record.targetId}</div>
+        </div>
+      )
+    },
+    {
+      title: '审批操作',
+      key: 'action',
+      render: (record: any) => (
+        <Tag color={record.action === 'approved' ? 'green' : 'red'}>
+          {record.action === 'approved' ? '通过' : '拒绝'}
+        </Tag>
+      )
+    },
+    {
+      title: '审批人',
+      key: 'operator',
+      render: (record: any) => (
+        <div>
+          <div className="font-medium">{record.operatorName}</div>
+          <div className="text-sm text-gray-500">{record.operator?.email}</div>
+        </div>
+      )
+    },
+    {
+      title: '审批时间',
+      key: 'operatedAt',
+      render: (record: any) => (
+        <div className="text-sm">
+          {new Date(record.operatedAt).toLocaleString()}
+        </div>
+      )
+    },
+    {
+      title: '备注',
+      key: 'comment',
+      render: (record: any) => (
+        <div className="text-sm text-gray-600">
+          {record.comment || '-'}
+        </div>
+      )
+    }
+  ]
 
   // 动态表格列定义
   const getColumns = () => {
@@ -398,6 +495,42 @@ export default function ApprovalsPage() {
     loadData()
   }, [activeTab, currentPage, canRead])
 
+  // 实时同步机制 - 监听审批状态更新
+  useEffect(() => {
+    if (!user || !canRead) return
+
+    // 监听localStorage变化，实现跨组件数据同步
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'notification_update' || e.key === 'deployment_status_update') {
+        console.log('🔄 [审批管理页面] 收到数据更新，刷新审批列表')
+        loadData()
+        // 清除通知标记
+        localStorage.removeItem('notification_update')
+        localStorage.removeItem('deployment_status_update')
+      }
+    }
+
+    // 监听自定义事件，实现同页面组件间同步
+    const handleApprovalUpdate = () => {
+      console.log('🔄 [审批管理页面] 收到审批更新事件，刷新数据')
+      loadData()
+    }
+
+    window.addEventListener('storage', handleStorageChange)
+    window.addEventListener('approvalUpdate', handleApprovalUpdate)
+
+    // 定期刷新数据（每30秒）
+    const refreshInterval = setInterval(() => {
+      loadData()
+    }, 30000)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('approvalUpdate', handleApprovalUpdate)
+      clearInterval(refreshInterval)
+    }
+  }, [user, canRead, activeTab, currentPage])
+
   if (!canRead) {
     return (
       <MainLayout>
@@ -427,119 +560,125 @@ export default function ApprovalsPage() {
         </div>
 
       {/* 统计卡片 */}
-      {stats && (
-        <>
-          <Row gutter={16} style={{ marginBottom: '20px' }}>
-            <Col span={6}>
-              <Card className="glass-card">
-                <Statistic
-                  title="待审批任务"
-                  value={stats.pendingApprovals}
-                  prefix={<ClockCircleOutlined style={{ color: '#faad14' }} />}
-                  valueStyle={{ color: '#faad14' }}
-                />
-              </Card>
-            </Col>
-            <Col span={6}>
-              <Card className="glass-card">
-                <Statistic
-                  title="我的待审批"
-                  value={stats.myPendingApprovals}
-                  prefix={<Badge count={stats.myPendingApprovals} />}
-                  valueStyle={{ color: '#1890ff' }}
-                />
-              </Card>
-            </Col>
-            <Col span={6}>
-              <Card className="glass-card">
-                <Statistic
-                  title="今日已处理"
-                  value={stats.todayTotal || (stats.approvedToday + stats.rejectedToday)}
-                  suffix={`(通过${stats.approvedToday}/拒绝${stats.rejectedToday})`}
-                  valueStyle={{ color: '#52c41a' }}
-                />
-              </Card>
-            </Col>
-            <Col span={6}>
-              <Card className="glass-card">
-                <Statistic
-                  title="平均审批时间"
-                  value={stats.averageApprovalTime}
-                  suffix="小时"
-                  precision={1}
-                  valueStyle={{ color: '#722ed1' }}
-                />
-              </Card>
-            </Col>
-          </Row>
+      <Row gutter={16} style={{ marginBottom: '20px' }}>
+        <Col span={6}>
+          <Card className="glass-card">
+            <Statistic
+              title="待审批任务"
+              value={stats?.pendingApprovals || 0}
+              prefix={<ClockCircleOutlined style={{ color: '#faad14' }} />}
+              valueStyle={{ color: '#faad14' }}
+              loading={!stats}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card className="glass-card">
+            <Statistic
+              title="我的待审批"
+              value={stats?.myPendingApprovals || 0}
+              prefix={<Badge count={stats?.myPendingApprovals || 0} />}
+              valueStyle={{ color: '#1890ff' }}
+              loading={!stats}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card className="glass-card">
+            <Statistic
+              title="今日已处理"
+              value={stats?.todayTotal || ((stats?.approvedToday || 0) + (stats?.rejectedToday || 0))}
+              suffix={`(通过${stats?.approvedToday || 0}/拒绝${stats?.rejectedToday || 0})`}
+              valueStyle={{ color: '#52c41a' }}
+              loading={!stats}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card className="glass-card">
+            <Statistic
+              title="平均审批时间"
+              value={stats?.averageApprovalTime || 0}
+              suffix="小时"
+              precision={1}
+              valueStyle={{ color: '#722ed1' }}
+              loading={!stats}
+            />
+          </Card>
+        </Col>
+      </Row>
 
-          {/* 详细统计 */}
-          <Row gutter={16} style={{ marginBottom: '20px' }}>
-            <Col span={8}>
-              <Card className="glass-card" title="我的处理统计">
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Statistic
-                      title="今日处理"
-                      value={stats.myTodayProcessed || 0}
-                      valueStyle={{ color: '#1890ff' }}
-                    />
-                  </Col>
-                  <Col span={12}>
-                    <Statistic
-                      title="本周处理"
-                      value={stats.myWeeklyProcessed || 0}
-                      valueStyle={{ color: '#52c41a' }}
-                    />
-                  </Col>
-                </Row>
-              </Card>
-            </Col>
-            <Col span={8}>
-              <Card className="glass-card" title="系统处理统计">
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Statistic
-                      title="本周处理"
-                      value={stats.weeklyTotal || 0}
-                      valueStyle={{ color: '#722ed1' }}
-                    />
-                  </Col>
-                  <Col span={12}>
-                    <Statistic
-                      title="本月处理"
-                      value={stats.monthlyTotal || 0}
-                      valueStyle={{ color: '#fa8c16' }}
-                    />
-                  </Col>
-                </Row>
-              </Card>
-            </Col>
-            <Col span={8}>
-              <Card className="glass-card" title="今日活动">
-                {stats.recentApprovals && stats.recentApprovals.length > 0 ? (
-                  <div className="space-y-2 max-h-20 overflow-y-auto">
-                    {stats.recentApprovals.slice(0, 3).map((approval, index) => (
-                      <div key={index} className="text-sm">
-                        <Tag
-                          color={approval.status === 'approved' ? 'green' : 'red'}
-                        >
-                          {approval.status === 'approved' ? '通过' : '拒绝'}
-                        </Tag>
-                        <span className="text-gray-600">
-                          {approval.projectName} - {approval.deploymentName}
-                        </span>
-                      </div>
-                    ))}
+      {/* 详细统计 */}
+      <Row gutter={16} style={{ marginBottom: '20px' }}>
+        <Col span={8}>
+          <Card className="glass-card" title="我的处理统计">
+            <Row gutter={16}>
+              <Col span={12}>
+                <Statistic
+                  title="今日处理"
+                  value={stats?.myTodayProcessed || 0}
+                  valueStyle={{ color: '#1890ff' }}
+                  loading={!stats}
+                />
+              </Col>
+              <Col span={12}>
+                <Statistic
+                  title="本周处理"
+                  value={stats?.myWeeklyProcessed || 0}
+                  valueStyle={{ color: '#52c41a' }}
+                  loading={!stats}
+                />
+              </Col>
+            </Row>
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card className="glass-card" title="系统处理统计">
+            <Row gutter={16}>
+              <Col span={12}>
+                <Statistic
+                  title="本周处理"
+                  value={stats?.weeklyTotal || 0}
+                  valueStyle={{ color: '#722ed1' }}
+                  loading={!stats}
+                />
+              </Col>
+              <Col span={12}>
+                <Statistic
+                  title="本月处理"
+                  value={stats?.monthlyTotal || 0}
+                  valueStyle={{ color: '#fa8c16' }}
+                  loading={!stats}
+                />
+              </Col>
+            </Row>
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card className="glass-card" title="今日活动">
+            {!stats ? (
+              <Spin size="small" />
+            ) : stats.recentApprovals && stats.recentApprovals.length > 0 ? (
+              <div className="space-y-2 max-h-20 overflow-y-auto">
+                {stats.recentApprovals.slice(0, 3).map((approval, index) => (
+                  <div key={index} className="text-sm">
+                    <Tag
+                      color={approval.status === 'approved' ? 'green' : 'red'}
+                    >
+                      {approval.status === 'approved' ? '通过' : '拒绝'}
+                    </Tag>
+                    <span className="text-gray-600">
+                      {approval.projectName} - {approval.deploymentName}
+                    </span>
                   </div>
-                ) : (
-                  <Text type="secondary">今日暂无审批活动</Text>
-                )}
-              </Card>
-            </Col>
-          </Row>
-        </>
-      )}
+                ))}
+              </div>
+            ) : (
+              <Text type="secondary">今日暂无审批活动</Text>
+            )}
+          </Card>
+        </Col>
+      </Row>
 
       {/* 标签页 */}
       <Card className="glass-card" style={{ marginBottom: '20px' }}>
@@ -575,6 +714,16 @@ export default function ApprovalsPage() {
                 全部审批
               </Button>
             )}
+            {/* 用户审批记录 */}
+            <Button
+              type={activeTab === 'users' ? 'primary' : 'default'}
+              onClick={() => {
+                setActiveTab('users')
+                setCurrentPage(1)
+              }}
+            >
+              用户审批
+            </Button>
 
           </Space>
           <Button 
@@ -618,7 +767,23 @@ export default function ApprovalsPage() {
         </div>
 
         {/* 根据标签页显示不同内容 */}
-        {(activeTab === 'pending' || activeTab === 'my' || activeTab === 'all') && (
+        {activeTab === 'users' ? (
+          <Table
+            columns={getUserApprovalColumns()}
+            dataSource={userApprovals}
+            rowKey="id"
+            loading={loading}
+            pagination={{
+              current: currentPage,
+              total,
+              pageSize: 20,
+              onChange: setCurrentPage,
+              showSizeChanger: false,
+              showQuickJumper: true,
+              showTotal: (total, range) => `${range[0]}-${range[1]} / ${total} 条`
+            }}
+          />
+        ) : (
           <Table
             columns={getColumns()}
             dataSource={approvals}

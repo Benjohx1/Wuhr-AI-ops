@@ -14,6 +14,9 @@ interface DeploymentLogViewerProps {
   onClose: () => void
   deploymentId: string
   deploymentName: string
+  isJenkinsDeployment?: boolean // 是否为Jenkins部署任务
+  jenkinsJobId?: string // Jenkins任务ID
+  jenkinsBuildNumber?: number // Jenkins构建号
 }
 
 interface LogEntry {
@@ -27,7 +30,10 @@ const DeploymentLogViewer: React.FC<DeploymentLogViewerProps> = ({
   visible,
   onClose,
   deploymentId,
-  deploymentName
+  deploymentName,
+  isJenkinsDeployment = false,
+  jenkinsJobId,
+  jenkinsBuildNumber
 }) => {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [loading, setLoading] = useState(false)
@@ -81,35 +87,113 @@ const DeploymentLogViewer: React.FC<DeploymentLogViewerProps> = ({
     }
   }
 
+  // 解析Jenkins日志条目
+  const parseJenkinsLogEntry = (line: string, index: number): LogEntry => {
+    // Jenkins日志格式通常是纯文本，需要特殊处理
+    let level: LogEntry['level'] = 'info'
+    let stage: string | undefined = undefined
+
+    // 检查Jenkins特有的日志模式
+    if (line.includes('[Pipeline]') || line.includes('Started by')) {
+      level = 'info'
+      stage = 'Pipeline'
+    } else if (line.includes('Finished:')) {
+      if (line.includes('SUCCESS')) {
+        level = 'success'
+        stage = 'Complete'
+      } else if (line.includes('FAILURE') || line.includes('ABORTED')) {
+        level = 'error'
+        stage = 'Complete'
+      }
+    } else if (line.includes('ERROR') || line.includes('FAILED') || line.includes('Exception')) {
+      level = 'error'
+    } else if (line.includes('WARNING') || line.includes('WARN')) {
+      level = 'warning'
+    } else if (line.includes('BUILD SUCCESSFUL') || line.includes('SUCCESS')) {
+      level = 'success'
+    }
+
+    // 尝试提取时间戳（Jenkins日志可能没有标准时间戳）
+    const timestampMatch = line.match(/(\d{2}:\d{2}:\d{2})/)
+    const timestamp = timestampMatch ? timestampMatch[1] : new Date().toLocaleTimeString()
+
+    return {
+      timestamp,
+      level,
+      message: line,
+      stage
+    }
+  }
+
   // 获取部署日志
   const fetchLogs = async () => {
     if (!deploymentId) return
-    
+
     try {
       setLoading(true)
-      const response = await fetch(`/api/cicd/deployments/${deploymentId}/status`)
-      const data = await response.json()
-      
-      if (data.success) {
-        setStatus(data.data.status)
-        
-        if (data.data.logs) {
-          const logLines = data.data.logs.split('\n').filter((line: string) => line.trim())
-          const parsedLogs = logLines.map(parseLogEntry)
-          setLogs(parsedLogs)
-          
-          // 自动滚动到底部
-          setTimeout(() => {
-            if (logContainerRef.current) {
-              logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight
-            }
-          }, 100)
+
+      if (isJenkinsDeployment && jenkinsJobId) {
+        // Jenkins部署任务：获取Jenkins构建日志
+        console.log('🔍 获取Jenkins构建日志:', { jenkinsJobId, jenkinsBuildNumber })
+
+        const response = await fetch(`/api/jenkins/jobs/${jenkinsJobId}/builds/${jenkinsBuildNumber || 'latest'}/logs`)
+        const data = await response.json()
+
+        if (data.success) {
+          setStatus(data.data.status || 'unknown')
+
+          if (data.data.logs) {
+            // Jenkins日志通常是纯文本，需要解析
+            const logLines = data.data.logs.split('\n').filter((line: string) => line.trim())
+            const parsedLogs = logLines.map((line: string, index: number) => parseJenkinsLogEntry(line, index))
+            setLogs(parsedLogs)
+          }
+        } else {
+          // 如果Jenkins日志获取失败，回退到普通部署日志
+          console.warn('Jenkins日志获取失败，回退到普通部署日志')
+          await fetchDeploymentLogs()
         }
+      } else {
+        // 普通部署任务：获取部署日志
+        await fetchDeploymentLogs()
       }
+
+      // 自动滚动到底部
+      setTimeout(() => {
+        if (logContainerRef.current) {
+          logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight
+        }
+      }, 100)
+
     } catch (error) {
       console.error('获取日志失败:', error)
+      // 如果是Jenkins日志获取失败，尝试获取普通部署日志
+      if (isJenkinsDeployment) {
+        console.warn('Jenkins日志获取异常，尝试获取部署日志')
+        try {
+          await fetchDeploymentLogs()
+        } catch (fallbackError) {
+          console.error('部署日志获取也失败:', fallbackError)
+        }
+      }
     } finally {
       setLoading(false)
+    }
+  }
+
+  // 获取普通部署日志
+  const fetchDeploymentLogs = async () => {
+    const response = await fetch(`/api/cicd/deployments/${deploymentId}/status`)
+    const data = await response.json()
+
+    if (data.success) {
+      setStatus(data.data.status)
+
+      if (data.data.logs) {
+        const logLines = data.data.logs.split('\n').filter((line: string) => line.trim())
+        const parsedLogs = logLines.map(parseLogEntry)
+        setLogs(parsedLogs)
+      }
     }
   }
 

@@ -63,7 +63,13 @@ export async function GET(request: NextRequest) {
           },
           include: {
             deployment: {
-              include: {
+              select: {
+                id: true,
+                name: true,
+                environment: true,
+                isJenkinsDeployment: true,
+                jenkinsJobName: true,
+                jenkinsJobId: true,
                 project: {
                   select: { id: true, name: true }
                 },
@@ -174,18 +180,28 @@ export async function GET(request: NextRequest) {
 
     // 添加CI/CD审批通知
     for (const approval of pendingCICDApprovals) {
+      // 安全获取项目名称，支持Jenkins部署任务
+      const projectName = approval.deployment.project?.name ||
+                         approval.deployment.jenkinsJobName ||
+                         '未知项目'
+
+      const isJenkinsDeployment = approval.deployment.isJenkinsDeployment || false
+      const taskType = isJenkinsDeployment ? 'Jenkins任务' : '项目'
+
       notifications.push({
         id: `cicd_approval_${approval.id}`,
         type: 'cicd_approval',
-        title: 'CI/CD部署审批',
-        message: `项目 ${approval.deployment.project.name} 的部署任务等待您的审批`,
+        title: `${taskType}部署审批`,
+        message: `${taskType} ${projectName} 的部署任务等待您的审批`,
         data: {
           approvalId: approval.id,
           deploymentId: approval.deploymentId,
           deploymentName: approval.deployment.name,
-          projectName: approval.deployment.project.name,
+          projectName: projectName,
           creatorName: approval.deployment.user?.username || '未知用户',
           environment: approval.deployment.environment,
+          isJenkinsDeployment: isJenkinsDeployment,
+          jenkinsJobName: approval.deployment.jenkinsJobName || null,
           createdAt: approval.createdAt
         },
         createdAt: approval.createdAt,

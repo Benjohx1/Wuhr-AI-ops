@@ -4,6 +4,7 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import os from 'os'
 import fs from 'fs'
+import { appInitializer } from '../../../../lib/startup/appInitializer'
 
 const execAsync = promisify(exec)
 

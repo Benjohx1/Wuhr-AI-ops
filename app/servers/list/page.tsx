@@ -19,7 +19,8 @@ import {
   Tag,
   Spin,
   Empty,
-  message
+  message,
+  Modal
 } from 'antd'
 import {
   SearchOutlined,
@@ -30,18 +31,22 @@ import {
   CheckCircleOutlined,
   ExclamationCircleOutlined,
   CloseCircleOutlined,
-  WarningOutlined
+  WarningOutlined,
+  DownloadOutlined,
+  UploadOutlined
 } from '@ant-design/icons'
 
 import { ServerInfo } from '../../types/access-management'
 import { useAuth } from '../../hooks/useAuth'
+import { usePermissions } from '../../hooks/usePermissions'
+import { PermissionGuard, PermissionButton } from '../../components/auth/PermissionGuard'
 
 const { Option } = Select
 
 const ServerListPage: React.FC = () => {
-  // 移除useServerData hook，只使用真实数据库数据
-  const [loading] = useState(false) // 保留loading状态用于兼容性
-  const { } = useAuth() // 保持认证状态检查
+  // 只使用真实数据库数据
+  const { user } = useAuth() // 保持认证状态检查
+  const { canAccessServers } = usePermissions()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string[]>([])
@@ -58,6 +63,8 @@ const ServerListPage: React.FC = () => {
   const [viewingServer, setViewingServer] = useState<ServerInfo | null>(null)
   const [realServers, setRealServers] = useState<ServerInfo[]>([])
   const [realLoading, setRealLoading] = useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
+  const [importLoading, setImportLoading] = useState(false)
 
   // 获取真实服务器数据
   const fetchRealServers = async () => {
@@ -73,8 +80,7 @@ const ServerListPage: React.FC = () => {
       setRealServers(result.data.servers || [])
     } catch (error) {
       console.error('获取服务器列表失败:', error)
-      message.error('获取服务器列表失败，使用模拟数据')
-      // 如果API失败，使用模拟数据作为后备
+      message.error('获取服务器列表失败')
       setRealServers([])
     } finally {
       setRealLoading(false)
@@ -84,25 +90,47 @@ const ServerListPage: React.FC = () => {
   // 页面加载时获取服务器数据
   useEffect(() => {
     fetchRealServers()
+    loadServerStats()
   }, [])
 
   // 只使用真实数据库数据
   const allServers = React.useMemo(() => realServers, [realServers])
 
-  // 获取统计信息（基于真实数据）
-  const stats = React.useMemo(() => {
-    return realServers.reduce((acc, server) => {
-      acc.total++
-      acc[server.status]++
-      return acc
-    }, {
-      total: 0,
-      online: 0,
-      offline: 0,
-      warning: 0,
-      error: 0
-    })
-  }, [realServers])
+  // 服务器统计状态
+  const [stats, setStats] = useState<any>(null)
+
+  // 加载服务器统计数据
+  const loadServerStats = async () => {
+    try {
+      const response = await fetch('/api/admin/servers/stats')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          setStats(data.data)
+          console.log('📊 [主机管理页面] 统计数据加载成功:', data.data)
+        } else {
+          console.error('📊 [主机管理页面] 统计API返回失败:', data.error)
+        }
+      } else {
+        console.error('📊 [主机管理页面] 统计API请求失败')
+      }
+    } catch (error) {
+      console.error('📊 [主机管理页面] 加载统计数据失败:', error)
+      // 降级到本地计算
+      const localStats = realServers.reduce((acc, server) => {
+        acc.total++
+        acc[server.status]++
+        return acc
+      }, {
+        total: 0,
+        online: 0,
+        offline: 0,
+        warning: 0,
+        error: 0
+      })
+      setStats(localStats)
+    }
+  }
 
   // 获取所有唯一的标签
   const allTags = React.useMemo(() =>
@@ -199,26 +227,49 @@ const ServerListPage: React.FC = () => {
       setTestConnectionLoading(server.id)
       setConnectionStatuses(prev => ({ ...prev, [server.id]: null }))
 
-      // 使用新的基于ID的连接测试API
+      // 显示开始测试的消息
+      message.loading(`正在测试主机 "${server.name}" 的连接...`, 0)
+
+      // 使用新的基于ID的连接测试API，增加超时时间
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 90000) // 90秒超时
+
       const response = await fetch(`/api/admin/servers/${server.id}/test-connection`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         credentials: 'include', // 使用cookie认证
+        signal: controller.signal
       })
 
+      clearTimeout(timeoutId)
+      message.destroy() // 清除loading消息
+
       if (response.ok) {
+        const result = await response.json()
         setConnectionStatuses(prev => ({ ...prev, [server.id]: 'success' }))
         message.success(`主机 "${server.name}" 连接测试成功`)
+
+        // 如果有系统信息，显示额外信息
+        if (result.data?.systemInfo) {
+          console.log('系统信息:', result.data.systemInfo)
+        }
       } else {
         const errorData = await response.json()
         setConnectionStatuses(prev => ({ ...prev, [server.id]: 'error' }))
         message.error(`主机 "${server.name}" 连接测试失败: ${errorData.error || '未知错误'}`)
       }
     } catch (error) {
+      console.error('连接测试失败:', error)
+      message.destroy() // 清除loading消息
       setConnectionStatuses(prev => ({ ...prev, [server.id]: 'error' }))
-      message.error(`连接测试失败: ${error}`)
+
+      if (error instanceof Error && error.name === 'AbortError') {
+        message.error(`主机 "${server.name}" 连接测试超时，请检查网络连接`)
+      } else {
+        message.error(`主机 "${server.name}" 连接测试异常: ${error instanceof Error ? error.message : '未知错误'}`)
+      }
     } finally {
       setTestConnectionLoading(null)
     }
@@ -231,8 +282,293 @@ const ServerListPage: React.FC = () => {
     fetchRealServers()
   }
 
+  // 导出服务器配置
+  const handleExportServers = async () => {
+    try {
+      setExportLoading(true)
+      const response = await fetch('/api/admin/servers/export', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+
+        // 动态导入xlsx库
+        const XLSX = await import('xlsx')
+
+        // 准备Excel数据
+        const excelData = data.data.servers.map((server: any) => ({
+          '主机名称': server.name,
+          'IP地址': server.ip,
+          'SSH端口': server.port,
+          'SSH用户名': server.username,
+          '操作系统': server.os,
+          '位置': server.location || '',
+          '描述': server.description || '',
+          '标签': Array.isArray(server.tags) ? server.tags.join(',') : '',
+          '创建时间': new Date(server.createdAt).toLocaleString(),
+          '更新时间': new Date(server.updatedAt).toLocaleString()
+        }))
+
+        // 创建工作簿
+        const wb = XLSX.utils.book_new()
+
+        // 创建数据工作表
+        const ws = XLSX.utils.json_to_sheet(excelData)
+
+        // 设置列宽
+        const colWidths = [
+          { wch: 15 }, // 主机名称
+          { wch: 15 }, // IP地址
+          { wch: 8 },  // SSH端口
+          { wch: 12 }, // SSH用户名
+          { wch: 10 }, // 操作系统
+          { wch: 15 }, // 位置
+          { wch: 30 }, // 描述
+          { wch: 20 }, // 标签
+          { wch: 20 }, // 创建时间
+          { wch: 20 }  // 更新时间
+        ]
+        ws['!cols'] = colWidths
+
+        // 添加数据工作表
+        XLSX.utils.book_append_sheet(wb, ws, '服务器配置')
+
+        // 创建模板工作表（用于导入参考）
+        const templateData = [
+          {
+            '主机名称': 'web-server-01',
+            'IP地址': '192.168.1.100',
+            'SSH端口': 22,
+            'SSH用户名': 'root',
+            'SSH密码': 'your-password',
+            '操作系统': 'Linux',
+            '位置': '北京机房',
+            '描述': 'Web服务器',
+            '标签': 'web,production'
+          },
+          {
+            '主机名称': 'db-server-01',
+            'IP地址': '192.168.1.101',
+            'SSH端口': 22,
+            'SSH用户名': 'admin',
+            'SSH密码': 'your-password',
+            '操作系统': 'Ubuntu',
+            '位置': '上海机房',
+            '描述': '数据库服务器',
+            '标签': 'database,mysql'
+          }
+        ]
+
+        const templateWs = XLSX.utils.json_to_sheet(templateData)
+        templateWs['!cols'] = [
+          { wch: 15 }, // 主机名称
+          { wch: 15 }, // IP地址
+          { wch: 8 },  // SSH端口
+          { wch: 12 }, // SSH用户名
+          { wch: 15 }, // SSH密码
+          { wch: 10 }, // 操作系统
+          { wch: 15 }, // 位置
+          { wch: 30 }, // 描述
+          { wch: 20 }  // 标签
+        ]
+
+        // 添加模板工作表
+        XLSX.utils.book_append_sheet(wb, templateWs, '导入模板')
+
+        // 创建说明工作表
+        const instructionData = [
+          { '字段名称': '主机名称', '是否必填': '是', '说明': '服务器的显示名称，用于标识服务器', '示例': 'web-server-01' },
+          { '字段名称': 'IP地址', '是否必填': '是', '说明': '服务器的IP地址，支持IPv4格式', '示例': '192.168.1.100' },
+          { '字段名称': 'SSH端口', '是否必填': '否', '说明': 'SSH连接端口，默认为22', '示例': '22' },
+          { '字段名称': 'SSH用户名', '是否必填': '是', '说明': 'SSH登录用户名', '示例': 'root' },
+          { '字段名称': 'SSH密码', '是否必填': '是', '说明': 'SSH登录密码（导入时需要）', '示例': 'your-password' },
+          { '字段名称': '操作系统', '是否必填': '否', '说明': '服务器操作系统，可选：Linux/Ubuntu/CentOS/Debian/RedHat', '示例': 'Linux' },
+          { '字段名称': '位置', '是否必填': '否', '说明': '服务器物理位置或数据中心', '示例': '北京机房' },
+          { '字段名称': '描述', '是否必填': '否', '说明': '服务器用途或其他说明信息', '示例': 'Web服务器' },
+          { '字段名称': '标签', '是否必填': '否', '说明': '服务器标签，多个标签用英文逗号分隔', '示例': 'web,production' },
+          { '字段名称': '', '是否必填': '', '说明': '', '示例': '' },
+          { '字段名称': '导入说明：', '是否必填': '', '说明': '', '示例': '' },
+          { '字段名称': '1. 请使用"导入模板"工作表作为参考', '是否必填': '', '说明': '', '示例': '' },
+          { '字段名称': '2. 必填字段不能为空', '是否必填': '', '说明': '', '示例': '' },
+          { '字段名称': '3. IP地址格式必须正确', '是否必填': '', '说明': '', '示例': '' },
+          { '字段名称': '4. 重复的主机名或IP将被跳过', '是否必填': '', '说明': '', '示例': '' },
+          { '字段名称': '5. 导入后需要重新设置SSH密码', '是否必填': '', '说明': '', '示例': '' }
+        ]
+
+        const instructionWs = XLSX.utils.json_to_sheet(instructionData)
+        instructionWs['!cols'] = [
+          { wch: 25 }, // 字段名称
+          { wch: 10 }, // 是否必填
+          { wch: 40 }, // 说明
+          { wch: 20 }  // 示例
+        ]
+
+        // 添加说明工作表
+        XLSX.utils.book_append_sheet(wb, instructionWs, '填写说明')
+
+        // 导出Excel文件
+        const fileName = `servers-config-${new Date().toISOString().split('T')[0]}.xlsx`
+        XLSX.writeFile(wb, fileName)
+
+        message.success(`成功导出 ${data.data.servers.length} 个服务器配置到Excel文件`)
+      } else {
+        const errorData = await response.json()
+        message.error(`导出失败: ${errorData.error || '未知错误'}`)
+      }
+    } catch (error) {
+      console.error('导出服务器配置失败:', error)
+      message.error('导出服务器配置失败')
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  // 导入服务器配置
+  const handleImportServers = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.xlsx,.xls,.json'
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+
+      try {
+        setImportLoading(true)
+
+        let servers: any[] = []
+
+        if (file.name.endsWith('.json')) {
+          // 处理JSON格式
+          const text = await file.text()
+          const config = JSON.parse(text)
+
+          if (!config.servers || !Array.isArray(config.servers)) {
+            message.error('JSON配置文件格式错误：缺少servers数组')
+            setImportLoading(false)
+            return
+          }
+
+          servers = config.servers
+        } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+          // 处理Excel格式
+          const XLSX = await import('xlsx')
+
+          const arrayBuffer = await file.arrayBuffer()
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+
+          // 尝试从不同的工作表读取数据
+          let worksheet
+          if (workbook.SheetNames.includes('导入模板')) {
+            worksheet = workbook.Sheets['导入模板']
+          } else if (workbook.SheetNames.includes('服务器配置')) {
+            worksheet = workbook.Sheets['服务器配置']
+          } else {
+            // 使用第一个工作表
+            worksheet = workbook.Sheets[workbook.SheetNames[0]]
+          }
+
+          const jsonData = XLSX.utils.sheet_to_json(worksheet)
+
+          if (!jsonData || jsonData.length === 0) {
+            message.error('Excel文件中没有找到有效数据')
+            setImportLoading(false)
+            return
+          }
+
+          // 转换Excel数据格式
+          servers = jsonData.map((row: any) => ({
+            name: row['主机名称'] || row['name'],
+            ip: row['IP地址'] || row['ip'],
+            port: parseInt(row['SSH端口'] || row['port']) || 22,
+            username: row['SSH用户名'] || row['username'],
+            password: row['SSH密码'] || row['password'],
+            os: row['操作系统'] || row['os'] || 'Linux',
+            location: row['位置'] || row['location'] || '',
+            description: row['描述'] || row['description'] || '',
+            tags: row['标签'] || row['tags'] ?
+              (typeof (row['标签'] || row['tags']) === 'string' ?
+                (row['标签'] || row['tags']).split(',').map((tag: string) => tag.trim()).filter(Boolean) :
+                []) : []
+          })).filter((server: any) => server.name && server.ip && server.username) // 过滤掉必填字段为空的行
+
+          if (servers.length === 0) {
+            message.error('Excel文件中没有找到有效的服务器配置数据，请检查必填字段是否完整')
+            setImportLoading(false)
+            return
+          }
+        } else {
+          message.error('不支持的文件格式，请使用.xlsx、.xls或.json文件')
+          setImportLoading(false)
+          return
+        }
+
+        // 发送导入请求
+        const response = await fetch('/api/admin/servers/import', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ servers })
+        })
+
+        if (response.ok) {
+          const result = await response.json()
+          const { imported, skipped, errors } = result.data
+
+          let successMessage = `成功导入 ${imported} 个服务器配置`
+          if (skipped > 0) {
+            successMessage += `，跳过 ${skipped} 个重复配置`
+          }
+
+          message.success(successMessage)
+
+          // 如果有错误，显示详细信息
+          if (errors && errors.length > 0) {
+            Modal.warning({
+              title: '导入完成，但有部分错误',
+              content: (
+                <div>
+                  <p>成功导入: {imported} 个</p>
+                  <p>跳过重复: {skipped} 个</p>
+                  <p>错误详情:</p>
+                  <ul style={{ maxHeight: '200px', overflow: 'auto' }}>
+                    {errors.slice(0, 10).map((error: string, index: number) => (
+                      <li key={index} style={{ color: 'red', fontSize: '12px' }}>
+                        {error}
+                      </li>
+                    ))}
+                    {errors.length > 10 && <li>...还有 {errors.length - 10} 个错误</li>}
+                  </ul>
+                </div>
+              ),
+              width: 600
+            })
+          }
+
+          fetchRealServers() // 刷新列表
+        } else {
+          const errorData = await response.json()
+          message.error(`导入失败: ${errorData.error || '未知错误'}`)
+        }
+      } catch (error) {
+        console.error('导入服务器配置失败:', error)
+        message.error('导入服务器配置失败：文件格式错误或网络异常')
+      } finally {
+        setImportLoading(false)
+      }
+    }
+    input.click()
+  }
+
   return (
     <MainLayout>
+      <PermissionGuard module="servers" action="read">
       <div className="p-6 space-y-6">
         {/* 页面标题和操作 */}
         <div className="flex items-center justify-between">
@@ -247,65 +583,154 @@ const ServerListPage: React.FC = () => {
           <Space>
             <Button
               type="default"
+              icon={<DownloadOutlined />}
+              onClick={handleExportServers}
+              loading={exportLoading}
+            >
+              导出Excel
+            </Button>
+            <Button
+              type="default"
+              icon={<UploadOutlined />}
+              onClick={handleImportServers}
+              loading={importLoading}
+            >
+              导入Excel
+            </Button>
+            <Button
+              type="default"
               icon={<ReloadOutlined />}
               onClick={handleRefresh}
               loading={realLoading}
             >
               刷新
             </Button>
-            <Button
+            <PermissionButton
               type="primary"
               icon={<PlusOutlined />}
               onClick={() => setAddModalVisible(true)}
+              module="servers"
+              action="write"
+              hideWhenNoPermission
             >
               添加主机
-            </Button>
+            </PermissionButton>
           </Space>
         </div>
 
         {/* 统计卡片 */}
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title="总服务器数"
-                value={stats.total}
-                prefix={<DesktopOutlined />}
-                valueStyle={{ color: '#1890ff' }}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title="在线服务器"
-                value={stats.online}
-                prefix={<CheckCircleOutlined />}
-                valueStyle={{ color: '#52c41a' }}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title="警告服务器"
-                value={stats.warning}
-                prefix={<WarningOutlined />}
-                valueStyle={{ color: '#faad14' }}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title="离线服务器"
-                value={stats.offline}
-                prefix={<CloseCircleOutlined />}
-                valueStyle={{ color: '#f5222d' }}
-              />
-            </Card>
-          </Col>
-        </Row>
+        {stats && (
+          <Row gutter={[16, 16]}>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic
+                  title="总服务器数"
+                  value={stats.total}
+                  prefix={<DesktopOutlined />}
+                  valueStyle={{ color: '#1890ff' }}
+                />
+                <div className="text-xs text-gray-500 mt-1">
+                  健康度: {stats.healthPercentage}%
+                </div>
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic
+                  title="在线服务器"
+                  value={stats.online}
+                  prefix={<CheckCircleOutlined />}
+                  valueStyle={{ color: '#52c41a' }}
+                />
+                <div className="text-xs text-gray-500 mt-1">
+                  最近1小时连接: {stats.connection?.recentlyConnected || 0}
+                </div>
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic
+                  title="警告服务器"
+                  value={stats.warning}
+                  prefix={<WarningOutlined />}
+                  valueStyle={{ color: '#faad14' }}
+                />
+                <div className="text-xs text-gray-500 mt-1">
+                  问题率: {stats.problemPercentage}%
+                </div>
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic
+                  title="离线服务器"
+                  value={stats.offline + (stats.error || 0)}
+                  prefix={<CloseCircleOutlined />}
+                  valueStyle={{ color: '#f5222d' }}
+                />
+                <div className="text-xs text-gray-500 mt-1">
+                  从未连接: {stats.connection?.neverConnected || 0}
+                </div>
+              </Card>
+            </Col>
+          </Row>
+        )}
+
+        {/* 详细统计信息 */}
+        {stats && (
+          <Row gutter={[16, 16]} style={{ marginTop: '16px' }}>
+            <Col xs={24} sm={12} md={8}>
+              <Card title="操作系统分布" size="small">
+                {stats.osStats?.length > 0 ? (
+                  <div className="space-y-2">
+                    {stats.osStats.map((os: any, index: number) => (
+                      <div key={index} className="flex justify-between items-center">
+                        <span className="text-sm">{os.os}</span>
+                        <span className="text-sm font-medium">{os.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-gray-500 text-sm">暂无数据</div>
+                )}
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Card title="位置分布" size="small">
+                {stats.locationStats?.length > 0 ? (
+                  <div className="space-y-2">
+                    {stats.locationStats.map((location: any, index: number) => (
+                      <div key={index} className="flex justify-between items-center">
+                        <span className="text-sm">{location.location}</span>
+                        <span className="text-sm font-medium">{location.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-gray-500 text-sm">暂无数据</div>
+                )}
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Card title="新增统计" size="small">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm">今日新增</span>
+                    <span className="text-sm font-medium text-blue-600">{stats.newServers?.today || 0}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm">本周新增</span>
+                    <span className="text-sm font-medium text-green-600">{stats.newServers?.weekly || 0}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm">本月新增</span>
+                    <span className="text-sm font-medium text-purple-600">{stats.newServers?.monthly || 0}</span>
+                  </div>
+                </div>
+              </Card>
+            </Col>
+          </Row>
+        )}
 
         {/* 搜索和筛选 */}
         <Card>
@@ -401,7 +826,7 @@ const ServerListPage: React.FC = () => {
             </div>
           }
         >
-          <Spin spinning={loading || realLoading}>
+          <Spin spinning={realLoading}>
             {filteredServers.length === 0 ? (
               <Empty
                 description="没有找到匹配的主机"
@@ -461,6 +886,7 @@ const ServerListPage: React.FC = () => {
           onTestConnection={handleTestConnection}
         />
       </div>
+      </PermissionGuard>
     </MainLayout>
   )
 }

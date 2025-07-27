@@ -20,11 +20,9 @@ import {
   LeftOutlined,
   RightOutlined
 } from '@ant-design/icons'
-import ProjectTemplateSelector from './ProjectTemplateSelector'
 import RepositoryValidator from './RepositoryValidator'
 import BuildConfigEditor from './BuildConfigEditor'
 import ProjectSummary from './ProjectSummary'
-import ProjectCreationProgress from '../../../components/cicd/ProjectCreationProgress'
 import { 
   ProjectTemplate, 
   CreateProjectWizardData, 
@@ -49,8 +47,7 @@ const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
   const [wizardData, setWizardData] = useState<Partial<CreateProjectWizardData>>({})
-  const [createdProjectId, setCreatedProjectId] = useState<string | null>(null)
-  const [showProgress, setShowProgress] = useState(false)
+
   const [repositoryInfo, setRepositoryInfo] = useState<RepositoryInfo | null>(null)
   const [detection, setDetection] = useState<ProjectDetectionResult | null>(null)
   const [selectedServer, setSelectedServer] = useState<any>(null)
@@ -60,7 +57,7 @@ const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({
     {
       title: '基本信息',
       icon: <ProjectOutlined />,
-      description: '项目名称和模板选择'
+      description: '项目名称和描述'
     },
     {
       title: '仓库配置',
@@ -70,18 +67,13 @@ const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({
     {
       title: '构建配置',
       icon: <SettingOutlined />,
-      description: '构建和部署脚本'
+      description: '构建脚本和CI配置'
     },
     {
       title: '确认创建',
       icon: <CheckOutlined />,
       description: '确认配置并创建项目'
-    },
-    ...(showProgress ? [{
-      title: '创建进度',
-      icon: <CheckOutlined />,
-      description: '项目创建进度'
-    }] : [])
+    }
   ]
 
   // 重置向导
@@ -90,8 +82,6 @@ const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({
     setWizardData({})
     setRepositoryInfo(null)
     setDetection(null)
-    setCreatedProjectId(null)
-    setShowProgress(false)
     form.resetFields()
   }
 
@@ -110,17 +100,7 @@ const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({
       // 更新向导数据
       setWizardData(prev => ({ ...prev, ...values }))
 
-      // 特殊处理：第一步选择模板后，自动填充构建配置
-      if (currentStep === 0 && values.template) {
-        const template = values.template as ProjectTemplate
-        form.setFieldsValue({
-          buildScript: template.defaultConfig.buildScript,
-          deployScript: template.defaultConfig.deployScript,
-          environment: template.defaultConfig.environment,
-          repositoryType: template.defaultConfig.repositoryType,
-          branch: template.defaultConfig.branch
-        })
-      }
+      // 第一步：基本信息配置完成
 
       setCurrentStep(prev => prev + 1)
     } catch (error) {
@@ -159,17 +139,17 @@ const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({
           buildScript: finalData.buildScript,
           deployScript: finalData.deployScript,
           environment: finalData.environment,
-          serverId: finalData.serverId
+          serverId: finalData.serverId,
+          gitCredentialId: finalData.gitCredentialId // 添加Git认证配置ID
         })
       })
 
       const result = await response.json()
 
       if (result.success) {
-        // 显示项目创建进度
-        setCreatedProjectId(result.data.id)
-        setShowProgress(true)
-        setCurrentStep(steps.length) // 移动到进度步骤
+        message.success('项目创建成功！')
+        resetWizard()
+        onSuccess()
       } else {
         message.error(result.error || '项目创建失败')
       }
@@ -181,16 +161,17 @@ const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({
     }
   }
 
-  // 处理模板选择
-  const handleTemplateSelect = (template: ProjectTemplate) => {
-    form.setFieldsValue({ template })
-    setWizardData(prev => ({ ...prev, template }))
-  }
+
 
   // 处理仓库验证完成
-  const handleRepositoryValidation = (repoInfo: RepositoryInfo, detectionResult?: ProjectDetectionResult) => {
+  const handleRepositoryValidation = (repoInfo: RepositoryInfo, detectionResult?: ProjectDetectionResult, gitCredentialId?: string) => {
     setRepositoryInfo(repoInfo)
     setDetection(detectionResult || null)
+
+    // 保存Git认证配置ID到向导数据中
+    if (gitCredentialId) {
+      setWizardData(prev => ({ ...prev, gitCredentialId }))
+    }
 
     // 如果检测到项目类型，提供模板建议
     if (detectionResult && detectionResult.suggestions.length > 0 && currentStep === 0) {
@@ -240,14 +221,7 @@ const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({
               />
             </Form.Item>
 
-            <Form.Item name="template">
-              <ProjectTemplateSelector
-                selectedTemplate={wizardData.template}
-                onSelect={handleTemplateSelect}
-                showRecommendations={!!detection}
-                recommendations={detection?.suggestions}
-              />
-            </Form.Item>
+
           </div>
         )
 
@@ -307,30 +281,7 @@ const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({
           </div>
         )
 
-      case 4:
-        return (
-          <div>
-            <ProjectCreationProgress
-              projectId={createdProjectId || undefined}
-              projectName={wizardData.name}
-              onComplete={(success) => {
-                if (success) {
-                  message.success('项目创建成功')
-                  resetWizard()
-                  onSuccess()
-                } else {
-                  message.error('项目创建失败')
-                  setCurrentStep(3) // 返回到确认步骤
-                  setShowProgress(false)
-                }
-              }}
-              onCancel={() => {
-                setCurrentStep(3) // 返回到确认步骤
-                setShowProgress(false)
-              }}
-            />
-          </div>
-        )
+
 
       default:
         return null

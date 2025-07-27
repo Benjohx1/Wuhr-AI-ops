@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10')
     const jenkinsConfigId = searchParams.get('jenkinsConfigId')
     const pipelineId = searchParams.get('pipelineId')
+    const projectId = searchParams.get('projectId') // 新增：支持按项目查询
     const status = searchParams.get('status')
 
     const prisma = await getPrismaClient()
@@ -54,6 +55,13 @@ export async function GET(request: NextRequest) {
 
     if (status) {
       where.status = status
+    }
+
+    // 如果指定了projectId，通过pipeline关联查询
+    if (projectId) {
+      where.pipeline = {
+        projectId: projectId
+      }
     }
 
     // 查询构建记录列表

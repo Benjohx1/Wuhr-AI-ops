@@ -28,6 +28,7 @@ import {
   SafetyOutlined
 } from '@ant-design/icons'
 import GitCredentialModal from './GitCredentialModal'
+import GitCredentialManager from './GitCredentialManager'
 import { RepositoryInfo, ProjectDetectionResult } from '../../types/project-template'
 
 const { Text, Title } = Typography
@@ -35,7 +36,7 @@ const { Option } = Select
 
 interface RepositoryValidatorProps {
   form: any
-  onValidationComplete?: (repositoryInfo: RepositoryInfo, detection?: ProjectDetectionResult) => void
+  onValidationComplete?: (repositoryInfo: RepositoryInfo, detection?: ProjectDetectionResult, gitCredentialId?: string) => void
   initialUrl?: string
   initialType?: string
 }
@@ -52,6 +53,7 @@ const RepositoryValidator: React.FC<RepositoryValidatorProps> = ({
   const [lastValidatedUrl, setLastValidatedUrl] = useState('')
   const [repositoryUrl, setRepositoryUrl] = useState(initialUrl)
   const [credentialModalVisible, setCredentialModalVisible] = useState(false)
+  const [credentialManagerVisible, setCredentialManagerVisible] = useState(false)
   const [credentials, setCredentials] = useState<any[]>([])
   const [selectedCredentialId, setSelectedCredentialId] = useState<string | undefined>()
 
@@ -139,9 +141,9 @@ const RepositoryValidator: React.FC<RepositoryValidatorProps> = ({
           })
         }
 
-        // 回调通知父组件
+        // 回调通知父组件，包含Git认证配置ID
         if (onValidationComplete) {
-          onValidationComplete(repoInfo, detectionResult)
+          onValidationComplete(repoInfo, detectionResult, selectedCredentialId)
         }
 
         if (repoInfo.accessible) {
@@ -324,7 +326,14 @@ const RepositoryValidator: React.FC<RepositoryValidatorProps> = ({
             icon={<SettingOutlined />}
             onClick={() => setCredentialModalVisible(true)}
           >
-            配置认证
+            新增认证
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => setCredentialManagerVisible(true)}
+          >
+            管理认证
           </Button>
         </div>
 
@@ -411,6 +420,15 @@ const RepositoryValidator: React.FC<RepositoryValidatorProps> = ({
         onCancel={() => setCredentialModalVisible(false)}
         onSuccess={() => {
           setCredentialModalVisible(false)
+          fetchCredentials() // 重新获取认证配置列表
+        }}
+      />
+
+      {/* Git认证配置管理器 */}
+      <GitCredentialManager
+        visible={credentialManagerVisible}
+        onCancel={() => setCredentialManagerVisible(false)}
+        onSuccess={() => {
           fetchCredentials() // 重新获取认证配置列表
         }}
       />

@@ -429,6 +429,127 @@ export async function PUT(request: NextRequest) {
             approvedAt: new Date()
           }
         })
+
+        // 检查是否所有审批都已完成，并更新部署任务状态
+        const allApprovals = await prisma.deploymentApproval.findMany({
+          where: { deploymentId: approval.deploymentId }
+        })
+
+        const pendingApprovals = allApprovals.filter(a => a.status === 'pending')
+        const rejectedApprovals = allApprovals.filter(a => a.status === 'rejected')
+
+        let newDeploymentStatus = approval.deployment.status
+
+        if (action === 'reject' || rejectedApprovals.length > 0) {
+          // 如果有任何审批被拒绝，部署任务状态改为拒绝
+          newDeploymentStatus = 'rejected'
+        } else if (pendingApprovals.length === 0) {
+          // 如果所有审批都已完成且没有拒绝，部署任务状态改为已审批
+          newDeploymentStatus = 'approved'
+        }
+
+        // 更新部署任务状态
+        if (newDeploymentStatus !== approval.deployment.status) {
+          await prisma.deployment.update({
+            where: { id: approval.deploymentId },
+            data: {
+              status: newDeploymentStatus,
+              updatedAt: new Date()
+            }
+          })
+
+          console.log('✅ 部署任务状态已更新:', {
+            deploymentId: approval.deploymentId,
+            oldStatus: approval.deployment.status,
+            newStatus: newDeploymentStatus
+          })
+
+          // 广播部署状态更新通知
+          try {
+            await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3001'}/api/notifications/broadcast`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'deployment_status_update',
+                deploymentId: approval.deploymentId,
+                status: newDeploymentStatus,
+                data: {
+                  deploymentName: approval.deployment.name,
+                  approverName: user.username,
+                  timestamp: new Date().toISOString()
+                }
+              })
+            })
+            console.log('📡 部署状态更新广播已发送')
+          } catch (broadcastError) {
+            console.error('❌ 发送状态更新广播失败:', broadcastError)
+          }
+
+          // 如果审批通过且所有审批都完成，自动开始部署
+          if (newDeploymentStatus === 'approved') {
+            console.log('🚀 开始自动部署流程:', approval.deploymentId)
+
+            // 异步触发真实部署流程，不阻塞审批响应
+            setTimeout(async () => {
+              try {
+                const { executeDeployment } = await import('../../../../lib/deployment/deploymentExecutor')
+                const prisma = await getPrismaClient()
+
+                // 更新部署状态为部署中
+                await prisma.deployment.update({
+                  where: { id: approval.deploymentId },
+                  data: {
+                    status: 'deploying',
+                    startedAt: new Date(),
+                    logs: '审批通过，自动开始部署...\n'
+                  }
+                })
+
+                console.log('🚀 开始真实部署流程:', approval.deploymentId)
+
+                // 执行真实部署
+                try {
+                  const deploymentResult = await executeDeployment(approval.deploymentId)
+
+                  // 更新部署结果
+                  await prisma.deployment.update({
+                    where: { id: approval.deploymentId },
+                    data: {
+                      status: deploymentResult.success ? 'success' : 'failed',
+                      completedAt: new Date(),
+                      duration: deploymentResult.duration,
+                      logs: deploymentResult.logs
+                    }
+                  })
+
+                  console.log(`✅ 真实部署${deploymentResult.success ? '成功' : '失败'}:`, approval.deploymentId)
+
+                  if (!deploymentResult.success) {
+                    console.error('❌ 部署失败原因:', deploymentResult.error)
+                  }
+
+                } catch (deploymentError) {
+                  console.error('❌ 部署执行异常:', deploymentError)
+
+                  // 更新为失败状态
+                  await prisma.deployment.update({
+                    where: { id: approval.deploymentId },
+                    data: {
+                      status: 'failed',
+                      completedAt: new Date(),
+                      duration: 0,
+                      logs: '审批通过，自动开始部署...\n❌ 部署执行异常: ' +
+                        (deploymentError instanceof Error ? deploymentError.message : '未知错误')
+                    }
+                  })
+                }
+
+              } catch (error) {
+                console.error('❌ 自动部署流程异常:', error)
+              }
+            }, 1000) // 1秒后开始执行
+          }
+        }
       }
 
       console.log(`✅ [Unified Approvals API] 审批操作成功: ${action}`)

@@ -23,12 +23,15 @@ import {
 } from '@ant-design/icons'
 import Link from 'next/link'
 import { useDashboard, defaultDashboardData } from '../../hooks/useDashboard'
+import { usePermissions } from '../../hooks/usePermissions'
 
 const { Title, Text, Paragraph } = Typography
 
 const Dashboard: React.FC = () => {
   // 获取真实数据
   const { data, loading, error, refresh } = useDashboard()
+  // 获取用户信息
+  const { user } = usePermissions()
 
   // 使用真实数据或默认数据
   const dashboardData = data || defaultDashboardData
@@ -137,7 +140,7 @@ const Dashboard: React.FC = () => {
         <div className="flex items-center justify-between">
           <div>
             <Title level={2} className="!text-white !mb-2">
-              欢迎回来，运维工程师 👋
+              欢迎回来，{user?.username || user?.email || '运维工程师'} 👋
             </Title>
             <Paragraph className="!text-gray-300 !mb-0 text-lg">
               今天是美好的一天，让我们开始高效的运维工作吧！

@@ -179,7 +179,9 @@ class NotificationManager {
 
           if (deployment) {
             // 添加项目创建者
-            recipients.add(deployment.project.user.id)
+            if (deployment.project?.user?.id) {
+              recipients.add(deployment.project.user.id)
+            }
             // 添加部署创建者
             recipients.add(deployment.user.id)
           }
@@ -202,7 +204,9 @@ class NotificationManager {
 
           if (approvalDeployment) {
             // 添加项目创建者
-            recipients.add(approvalDeployment.project.user.id)
+            if (approvalDeployment.project?.user?.id) {
+              recipients.add(approvalDeployment.project.user.id)
+            }
             // 添加部署创建者
             recipients.add(approvalDeployment.user.id)
           }
@@ -225,7 +229,9 @@ class NotificationManager {
 
           if (taskDeployment) {
             // 添加项目创建者
-            recipients.add(taskDeployment.project.user.id)
+            if (taskDeployment.project?.user?.id) {
+              recipients.add(taskDeployment.project.user.id)
+            }
             // 添加部署创建者
             recipients.add(taskDeployment.user.id)
           }

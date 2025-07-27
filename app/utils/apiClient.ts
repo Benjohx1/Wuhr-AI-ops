@@ -148,6 +148,7 @@ export class ApiClient {
           headers: this.createHeaders(customHeaders),
           body: body ? JSON.stringify(body) : undefined,
           signal: controller.signal,
+          credentials: 'include', // 确保发送cookies
         })
 
         clearTimeout(timeoutId)

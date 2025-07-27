@@ -150,12 +150,17 @@ export class JenkinsClient {
   // 执行作业（单个）
   async buildJob(request: JenkinsExecutionRequest): Promise<JenkinsExecutionResponse> {
     try {
+      console.log(`🔧 [Jenkins API] 准备执行作业: ${request.jobName}`)
+
       const encodedJobName = encodeURIComponent(request.jobName)
       let endpoint = `/job/${encodedJobName}/build`
-      
+
       // 如果有参数，使用buildWithParameters端点
       if (request.parameters && Object.keys(request.parameters).length > 0) {
         endpoint = `/job/${encodedJobName}/buildWithParameters`
+        console.log(`📝 [Jenkins API] 使用参数化构建端点: ${endpoint}`)
+      } else {
+        console.log(`🔧 [Jenkins API] 使用简单构建端点: ${endpoint}`)
       }
 
       const formData = new URLSearchParams()
@@ -172,7 +177,11 @@ export class JenkinsClient {
         formData.append('token', request.token)
       }
 
-      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      const fullUrl = `${this.baseUrl}${endpoint}`
+      console.log(`🌐 [Jenkins API] 发送请求: POST ${fullUrl}`)
+      console.log(`📋 [Jenkins API] 请求体:`, formData.toString())
+
+      const response = await fetch(fullUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Basic ${this.auth}`,
@@ -182,8 +191,17 @@ export class JenkinsClient {
         signal: AbortSignal.timeout(this.timeout),
       })
 
+      console.log(`📡 [Jenkins API] 响应状态: ${response.status} ${response.statusText}`)
+      console.log(`📋 [Jenkins API] 响应头:`, Object.fromEntries(response.headers.entries()))
+
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        const responseText = await response.text()
+        console.error(`❌ [Jenkins API] 请求失败:`, {
+          status: response.status,
+          statusText: response.statusText,
+          responseText: responseText.substring(0, 500)
+        })
+        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${responseText.substring(0, 200)}`)
       }
 
       // Jenkins返回的是201状态码，Location头包含队列URL
@@ -220,11 +238,18 @@ export class JenkinsClient {
     // 逐个执行作业
     for (const { jobName, order } of sortedJobs) {
       try {
-        console.log(`🚀 执行Jenkins作业: ${jobName} (顺序: ${order})`)
-        
+        console.log(`🚀 [Jenkins客户端] 执行作业: ${jobName} (顺序: ${order})`)
+        console.log(`📝 [Jenkins客户端] 作业参数:`, request.parameters)
+        console.log(`🔗 [Jenkins客户端] Jenkins服务器: ${this.baseUrl}`)
+
         const result = await this.buildJob({
           jobName,
           parameters: request.parameters
+        })
+
+        console.log(`✅ [Jenkins客户端] 作业执行成功: ${jobName}`, {
+          queueId: result.queueId,
+          queueUrl: result.queueUrl
         })
 
         results.push({
@@ -241,15 +266,28 @@ export class JenkinsClient {
         }
 
       } catch (error) {
-        console.error(`执行Jenkins作业失败 (${jobName}):`, error)
-        
+        console.error(`❌ [Jenkins客户端] 执行作业失败 (${jobName}):`, error)
+
+        // 提供更详细的错误信息
+        let errorDetails = '未知错误'
+        if (error instanceof Error) {
+          errorDetails = error.message
+          console.error(`❌ [Jenkins客户端] 错误详情:`, {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          })
+        } else if (typeof error === 'object' && error !== null) {
+          errorDetails = JSON.stringify(error)
+        }
+
         results.push({
           jobName,
           queueId: 0,
           queueUrl: '',
           order,
           status: 'failed',
-          error: error instanceof Error ? error.message : 'Unknown error'
+          error: errorDetails
         })
       }
     }

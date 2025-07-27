@@ -53,7 +53,7 @@ const ProjectLogViewer: React.FC<ProjectLogViewerProps> = ({
   } = useProjectLogs({
     projectId,
     enabled: !!projectId,
-    realtime: isRealtime,
+    realtime: false, // 暂时禁用实时日志，避免404死循环
     maxLines,
     onNewLog: (log) => {
       // 自动滚动到底部

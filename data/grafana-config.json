@@ -1,6 +1,6 @@
 {
   "id": 1,
-  "serverUrl": "http://100.64.0.5:3000/",
+  "serverUrl": "http://localhost:3000/",
   "username": "admin",
   "password": "ab54df19cae8f30632a9da3fa92e466a:77211cc7454cb7198cc8333ee0eb0ef79dac038bc8e9c22c439163bd25ef485ce1b04b7b3fea94aff8b8320a248d3224120360d7fe9f22c6e4cf5db6179dbbd18645eee0cd4686023325e889ef16116d",
   "apiKey": null,

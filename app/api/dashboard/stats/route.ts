@@ -8,6 +8,10 @@ import os from 'os'
 const execAsync = promisify(exec)
 import { successResponse, errorResponse } from '../../../../lib/auth/apiHelpers'
 
+// 强制动态渲染，解决构建时的request.headers问题
+export const dynamic = 'force-dynamic'
+
+
 // 获取仪表盘统计数据
 export async function GET(request: NextRequest) {
   try {

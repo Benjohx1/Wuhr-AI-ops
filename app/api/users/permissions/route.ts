@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '../../../../lib/auth/apiHelpers-new'
 import { getPrismaClient } from '../../../../lib/config/database'
 
+// 强制动态渲染，解决构建时的request.headers问题
+export const dynamic = 'force-dynamic'
+
+
 // GET /api/users/permissions - 获取用户权限列表
 export async function GET(request: NextRequest) {
   try {

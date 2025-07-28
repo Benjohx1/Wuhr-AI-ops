@@ -3,6 +3,10 @@ import { requireAuth } from '../../../../lib/auth/apiHelpers-new'
 import { getPrismaClient } from '../../../../lib/config/database'
 import { withLeakDetection } from '../../../../lib/database/leakDetector'
 
+// 强制动态渲染，解决构建时的request.headers问题
+export const dynamic = 'force-dynamic'
+
+
 // 获取统一的审批列表
 export async function GET(request: NextRequest) {
   return await withLeakDetection('get-unified-approvals', async () => {

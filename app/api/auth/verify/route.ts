@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '../../../../lib/auth/apiHelpers-new'
 
-// 强制动态渲染
+// 强制动态渲染，解决构建时的request.headers问题
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {

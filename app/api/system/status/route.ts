@@ -5,6 +5,10 @@ import { promisify } from 'util'
 import os from 'os'
 import fs from 'fs'
 
+// 强制动态渲染，解决构建时的request.headers问题
+export const dynamic = 'force-dynamic'
+
+
 const execAsync = promisify(exec)
 
 // 获取系统状态信息

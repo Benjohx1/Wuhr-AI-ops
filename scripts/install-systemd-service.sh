@@ -116,19 +116,26 @@ if [ ! -f "package.json" ]; then
     exit 1
 fi
 
-# 简单直接的Node.js路径检测
+# 检测Node.js环境
 log_info "检测Node.js环境..."
 
-NODE_PATH=$(which node)
-NPM_PATH=$(which npm)
-
-if [ -z "$NODE_PATH" ] || [ -z "$NPM_PATH" ]; then
-    log_error "未找到 Node.js 或 npm，请先安装"
+# 检查node命令
+if command -v node >/dev/null 2>&1; then
+    NODE_PATH=$(command -v node)
+    log_info "Node.js 路径: $NODE_PATH"
+else
+    log_error "未找到 node 命令"
     exit 1
 fi
 
-log_info "Node.js 路径: $NODE_PATH"
-log_info "npm 路径: $NPM_PATH"
+# 检查npm命令
+if command -v npm >/dev/null 2>&1; then
+    NPM_PATH=$(command -v npm)
+    log_info "npm 路径: $NPM_PATH"
+else
+    log_error "未找到 npm 命令"
+    exit 1
+fi
 
 # 创建systemd服务文件
 SERVICE_FILE="$SYSTEMD_PATH/${SERVICE_NAME}.service"

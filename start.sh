@@ -11,6 +11,13 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# 全局变量
+PROJECT_DIR=$(pwd)
+KUBELET_WUHRAI_PATH="$PROJECT_DIR/kubelet-wuhrai"
+
+# 添加kubelet-wuhrai到PATH
+export PATH="$KUBELET_WUHRAI_PATH:$PATH"
+
 # 日志函数
 log_info() {
     echo -e "${BLUE}[信息]${NC} $1"
@@ -259,6 +266,14 @@ main() {
     log_info "检查系统环境..."
     check_and_install_environment
     
+    # 设置kubelet-wuhrai权限
+    if [ -f "$KUBELET_WUHRAI_PATH" ]; then
+        chmod +x "$KUBELET_WUHRAI_PATH"
+        log_info "kubelet-wuhrai 已添加到PATH并设置执行权限 ✓"
+    else
+        log_warning "kubelet-wuhrai 文件不存在: $KUBELET_WUHRAI_PATH"
+    fi
+    
     # 验证环境版本
     log_info "验证环境版本..."
     
@@ -440,8 +455,7 @@ main() {
     
     echo ""
     echo "🎉 Wuhr AI Ops 启动完成！"
-        echo "================================"
-    fi
+    echo "================================"
     echo "🌐 访问地址："
     
     # 获取内网IP

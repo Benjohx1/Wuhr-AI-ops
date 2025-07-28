@@ -153,23 +153,32 @@ fi
 if [ ! -d ".next" ]; then
     log_warning ".next 目录不存在，需要构建项目"
     log_info "运行构建..."
-    npm run build || {
-        log_error "构建失败，尝试开发模式启动"
-        nohup npm run dev > "$LOG_FILE" 2>&1 &
-        SERVICE_PID=$!
-        echo $SERVICE_PID > "$PID_FILE"
-        sleep 3
-        if kill -0 $SERVICE_PID 2>/dev/null; then
-            log_success "🎉 开发模式启动成功！"
-            echo "🌐 访问地址: http://localhost:3000"
-            echo "📝 查看日志: tail -f $LOG_FILE"
+    if ! npm run build; then
+        log_warning "构建失败，清理缓存后重试..."
+        rm -rf .next
+        npm cache clean --force >/dev/null 2>&1
+        
+        if npm run build; then
+            log_success "清理缓存后构建成功"
         else
-            log_error "启动失败，请查看日志: cat $LOG_FILE"
-            rm -f "$PID_FILE"
-            exit 1
+            log_error "构建仍然失败，使用开发模式启动"
+            nohup npm run dev > "$LOG_FILE" 2>&1 &
+            SERVICE_PID=$!
+            echo $SERVICE_PID > "$PID_FILE"
+            sleep 3
+            if kill -0 $SERVICE_PID 2>/dev/null; then
+                log_success "🎉 开发模式启动成功！"
+                echo "🌐 访问地址: http://localhost:3000"
+                echo "📝 查看日志: tail -f $LOG_FILE"
+                echo "💡 提示: 如需生产模式，请手动运行: ./scripts/clean-build.sh"
+            else
+                log_error "启动失败，请查看日志: cat $LOG_FILE"
+                rm -f "$PID_FILE"
+                exit 1
+            fi
+            exit 0
         fi
-        exit 0
-    }
+    fi
 fi
 
 # 启动服务

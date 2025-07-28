@@ -190,7 +190,7 @@ WorkingDirectory=$PROJECT_DIR
 Environment=NODE_ENV=production
 Environment=PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/node/bin:$(dirname $NODE_PATH):$(dirname $NPM_PATH)
 Environment=HOME=$PROJECT_DIR
-ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && $NPM_PATH install --production --unsafe-perm'
+ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && $NPM_PATH install --unsafe-perm'
 ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && $NPM_PATH run build'
 ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && $NPM_PATH exec prisma generate'
 ExecStart=$NPM_PATH start

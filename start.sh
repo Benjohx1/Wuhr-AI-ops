@@ -437,7 +437,24 @@ main() {
     echo "🎉 Wuhr AI Ops 启动完成！"
     echo "================================"
     echo "🌐 访问地址："
-    echo "   主应用: http://localhost:3000"
+    
+    # 获取内网IP
+    LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || ip route get 1 2>/dev/null | awk '{print $7; exit}' || ifconfig 2>/dev/null | grep -E 'inet.*192\.168\.|inet.*10\.|inet.*172\.' | awk '{print $2}' | head -1)
+    
+    # 获取外网IP
+    PUBLIC_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s ipinfo.io/ip 2>/dev/null || echo "获取失败")
+    
+    if [ -n "$LOCAL_IP" ] && [ "$LOCAL_IP" != "" ]; then
+        echo "   内网访问: http://$LOCAL_IP:3000"
+    else
+        echo "   内网访问: http://[请查看本机IP]:3000"
+    fi
+    
+    if [ "$PUBLIC_IP" != "获取失败" ] && [ -n "$PUBLIC_IP" ]; then
+        echo "   外网访问: http://$PUBLIC_IP:3000"
+    else
+        echo "   外网访问: http://[请配置公网IP]:3000"
+    fi
     echo ""
     echo "👤 默认账户："
     echo "   用户名: admin"
@@ -449,7 +466,8 @@ main() {
     echo ""
     echo "💡 提示："
     echo "- 首次启动可能需要等待几分钟"
-    echo "- 如果无法访问，请检查端口3000是否被占用"
+    echo "- 如果远程无法访问，请检查防火墙设置：ufw allow 3000"
+    echo "- 如果仍无法访问，请检查端口3000是否被占用"
     echo "- AI功能需要配置AI模型API密钥"
     echo ""
     echo "如遇问题，请查看："

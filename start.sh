@@ -205,33 +205,30 @@ main() {
     if npx prisma migrate deploy; then
         log_success "数据库迁移完成"
     else
-        log_warning "数据库迁移失败，尝试清理并重新创建..."
+        log_warning "数据库迁移失败，执行重置..."
         
-        # 强制删除数据库并重新创建
-        log_info "强制清理数据库..."
-        docker-compose exec -T postgres psql -U wuhr_admin -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'wuhr_ai_ops';" 2>/dev/null || true
-        docker-compose exec -T postgres psql -U wuhr_admin -d postgres -c "DROP DATABASE IF EXISTS wuhr_ai_ops;" 2>/dev/null || true
-        docker-compose exec -T postgres psql -U wuhr_admin -d postgres -c "CREATE DATABASE wuhr_ai_ops;" 2>/dev/null || true
-        
-        # 清理Prisma迁移记录
-        log_info "清理迁移记录..."
-        find prisma/migrations -name "_*" -type d -exec rm -rf {} + 2>/dev/null || true
-        rm -rf lib/generated/prisma/ 2>/dev/null || true
-        
-        # 重新尝试迁移
-        log_info "重新执行数据库迁移..."
-        if npx prisma migrate deploy; then
-            log_success "数据库重新创建成功"
+        # 使用 Prisma 重置数据库（推荐方法）
+        log_info "重置数据库..."
+        if npx prisma migrate reset --force; then
+            log_success "数据库重置完成"
         else
-            log_warning "使用开发模式迁移..."
-            if npx prisma migrate dev --name init 2>/dev/null; then
-                log_success "开发模式迁移完成"
+            log_warning "Prisma重置失败，手动清理数据库..."
+            
+            # 手动清理数据库
+            docker-compose exec -T postgres psql -U wuhr_admin -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'wuhr_ai_ops';" 2>/dev/null || true
+            docker-compose exec -T postgres psql -U wuhr_admin -d postgres -c "DROP DATABASE IF EXISTS wuhr_ai_ops;" 2>/dev/null || true
+            docker-compose exec -T postgres psql -U wuhr_admin -d postgres -c "CREATE DATABASE wuhr_ai_ops;" 2>/dev/null || true
+            
+            # 重新尝试迁移
+            log_info "重新执行数据库迁移..."
+            if npx prisma migrate deploy; then
+                log_success "数据库重新创建成功"
             else
-                log_warning "数据库操作失败，尝试直接推送Schema..."
-                npx prisma db push --force-reset 2>/dev/null || true
-            fi
-        fi
-    fi
+                                  log_warning "数据库操作失败，尝试直接推送Schema..."
+                  npx prisma db push --force-reset 2>/dev/null || true
+              fi
+          fi
+      fi
     
     # 生成Prisma客户端
     log_info "生成数据库客户端..."

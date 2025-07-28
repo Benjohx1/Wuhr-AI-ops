@@ -200,35 +200,14 @@ main() {
         log_warning "数据库连接超时，继续尝试..."
     fi
     
-    # 数据库迁移
-    log_info "执行数据库迁移..."
-    if npx prisma migrate deploy; then
-        log_success "数据库迁移完成"
+    # 初始化数据库
+    log_info "初始化数据库..."
+    if npx prisma db push --force-reset; then
+        log_success "数据库初始化完成"
     else
-        log_warning "数据库迁移失败，执行重置..."
-        
-        # 使用 Prisma 重置数据库（推荐方法）
-        log_info "重置数据库..."
-        if npx prisma migrate reset --force; then
-            log_success "数据库重置完成"
-        else
-            log_warning "Prisma重置失败，手动清理数据库..."
-            
-            # 手动清理数据库
-            docker-compose exec -T postgres psql -U wuhr_admin -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'wuhr_ai_ops';" 2>/dev/null || true
-            docker-compose exec -T postgres psql -U wuhr_admin -d postgres -c "DROP DATABASE IF EXISTS wuhr_ai_ops;" 2>/dev/null || true
-            docker-compose exec -T postgres psql -U wuhr_admin -d postgres -c "CREATE DATABASE wuhr_ai_ops;" 2>/dev/null || true
-            
-            # 重新尝试迁移
-            log_info "重新执行数据库迁移..."
-            if npx prisma migrate deploy; then
-                log_success "数据库重新创建成功"
-            else
-                                  log_warning "数据库操作失败，尝试直接推送Schema..."
-                  npx prisma db push --force-reset 2>/dev/null || true
-              fi
-          fi
-      fi
+        log_error "数据库初始化失败"
+        exit 1
+    fi
     
     # 生成Prisma客户端
     log_info "生成数据库客户端..."
@@ -239,12 +218,16 @@ main() {
         exit 1
     fi
     
-    # 初始化数据
-    log_info "初始化系统数据..."
-    if [ -f "scripts/init-super-admin.js" ]; then
-        node scripts/init-super-admin.js 2>/dev/null || log_warning "管理员初始化跳过"
+    # 创建管理员账户
+    log_info "创建管理员账户..."
+    if [ -f "scripts/create-admin.js" ]; then
+        node scripts/create-admin.js
+    else
+        log_warning "管理员创建脚本不存在"
     fi
     
+    # 初始化权限系统
+    log_info "初始化权限系统..."
     if [ -f "scripts/init-permissions.js" ]; then
         node scripts/init-permissions.js 2>/dev/null || log_warning "权限初始化跳过"
     fi

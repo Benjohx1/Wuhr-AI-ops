@@ -50,28 +50,18 @@ detect_system() {
     if [[ "$OS" == *"Ubuntu"* ]] || [[ "$OS" == *"Debian"* ]]; then
         SYSTEMD_PATH="/etc/systemd/system"
         PACKAGE_MANAGER="apt"
-        SERVICE_USER="www-data"
-        SERVICE_GROUP="www-data"
     elif [[ "$OS" == *"CentOS"* ]] || [[ "$OS" == *"Red Hat"* ]] || [[ "$OS" == *"Rocky"* ]] || [[ "$OS" == *"AlmaLinux"* ]]; then
         SYSTEMD_PATH="/etc/systemd/system"
         PACKAGE_MANAGER="yum"
-        SERVICE_USER="nginx"
-        SERVICE_GROUP="nginx"
     elif [[ "$OS" == *"Fedora"* ]]; then
         SYSTEMD_PATH="/etc/systemd/system"
         PACKAGE_MANAGER="dnf"
-        SERVICE_USER="nginx"
-        SERVICE_GROUP="nginx"
     elif [[ "$OS" == *"SUSE"* ]] || [[ "$OS" == *"openSUSE"* ]]; then
         SYSTEMD_PATH="/etc/systemd/system"
         PACKAGE_MANAGER="zypper"
-        SERVICE_USER="wwwrun"
-        SERVICE_GROUP="www"
     elif [[ "$OS" == *"Arch"* ]]; then
         SYSTEMD_PATH="/etc/systemd/system"
         PACKAGE_MANAGER="pacman"
-        SERVICE_USER="http"
-        SERVICE_GROUP="http"
     elif [[ "$OS" == *"Alpine"* ]]; then
         log_error "Alpine Linux 使用 OpenRC，不支持 systemd"
         exit 1
@@ -79,16 +69,11 @@ detect_system() {
         log_warning "未识别的系统，使用默认配置"
         SYSTEMD_PATH="/etc/systemd/system"
         PACKAGE_MANAGER="unknown"
-        SERVICE_USER="root"
-        SERVICE_GROUP="root"
     fi
     
-    # 检查服务用户是否存在，不存在则使用root
-    if ! id "$SERVICE_USER" &>/dev/null; then
-        log_warning "用户 $SERVICE_USER 不存在，使用 root 用户运行服务"
-        SERVICE_USER="root"
-        SERVICE_GROUP="root"
-    fi
+    # 统一使用root用户运行服务
+    SERVICE_USER="root"
+    SERVICE_GROUP="root"
     
     log_info "Systemd 路径: $SYSTEMD_PATH"
     log_info "包管理器: $PACKAGE_MANAGER"
@@ -186,17 +171,9 @@ SERVICE_FILE="$SYSTEMD_PATH/${SERVICE_NAME}.service"
 
 log_info "创建 systemd 服务文件: $SERVICE_FILE"
 
-# 检查项目目录权限
-log_info "检查项目目录权限..."
-if [ ! -r "$PROJECT_DIR/package.json" ]; then
-    log_warning "服务用户可能无法读取项目文件，调整权限..."
-    chmod -R 755 "$PROJECT_DIR"
-    chown -R $SERVICE_USER:$SERVICE_GROUP "$PROJECT_DIR" 2>/dev/null || {
-        log_warning "无法更改所有权，使用root用户运行服务"
-        SERVICE_USER="root"
-        SERVICE_GROUP="root"
-    }
-fi
+# 确保项目目录权限正确（root用户）
+log_info "设置项目目录权限..."
+chmod -R 755 "$PROJECT_DIR"
 
 cat > "$SERVICE_FILE" << EOF
 [Unit]
@@ -267,15 +244,8 @@ if [ -f "$PROJECT_DIR/node_modules/.bin/next" ]; then
     chmod +x "$PROJECT_DIR/node_modules/.bin/next"
 fi
 
-# 只在非root用户时尝试更改所有权
-if [ "$SERVICE_USER" != "root" ]; then
-    chown -R $SERVICE_USER:$SERVICE_GROUP "$PROJECT_DIR" 2>/dev/null || {
-        log_warning "无法更改项目目录所有权，服务将以root用户运行"
-        # 重新生成服务文件，改为root用户
-        sed -i "s/User=$SERVICE_USER/User=root/" "$SERVICE_FILE"
-        sed -i "s/Group=$SERVICE_GROUP/Group=root/" "$SERVICE_FILE"
-    }
-fi
+# root用户运行，无需更改所有权
+log_success "服务将以root用户运行"
 
 # 重新加载systemd配置
 log_info "重新加载 systemd 配置..."

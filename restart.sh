@@ -30,15 +30,37 @@ force_clean_port() {
     local port=$1
     log_warning "强制清理端口 $port..."
     
+    # 方法1: 使用lsof
     if command -v lsof >/dev/null 2>&1; then
         lsof -ti:$port | xargs kill -9 2>/dev/null || true
-    elif command -v netstat >/dev/null 2>&1; then
+    fi
+    
+    # 方法2: 使用netstat
+    if command -v netstat >/dev/null 2>&1; then
         netstat -tulpn 2>/dev/null | grep ":$port " | awk '{print $7}' | cut -d'/' -f1 | xargs kill -9 2>/dev/null || true
-    elif command -v ss >/dev/null 2>&1; then
+    fi
+    
+    # 方法3: 使用ss
+    if command -v ss >/dev/null 2>&1; then
         ss -tulpn 2>/dev/null | grep ":$port " | awk '{print $7}' | cut -d'/' -f1 | xargs kill -9 2>/dev/null || true
     fi
     
-    sleep 2
+    # 方法4: 使用fuser (如果可用)
+    if command -v fuser >/dev/null 2>&1; then
+        fuser -k $port/tcp 2>/dev/null || true
+    fi
+    
+    # 方法5: 强制杀死所有可能的Node.js进程
+    pkill -f "node.*3000" 2>/dev/null || true
+    pkill -f "next.*3000" 2>/dev/null || true
+    pkill -f "npm.*3000" 2>/dev/null || true
+    
+    # 方法6: 杀死所有占用该端口的进程
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -ti:$port | xargs -r kill -9 2>/dev/null || true
+    fi
+    
+    sleep 3
 }
 
 log_info() {
@@ -88,10 +110,39 @@ stop_service() {
 start_service() {
     log_info "启动服务..."
     
-    # 检查端口
-    if check_port 3000; then
-        log_warning "端口 3000 仍被占用，强制清理..."
+    # 多次尝试清理端口，确保完全释放
+    local max_attempts=5
+    local attempt=1
+    
+    while [ $attempt -le $max_attempts ] && check_port 3000; do
+        log_warning "端口 3000 被占用，第 $attempt 次清理尝试..."
         force_clean_port 3000
+        
+        # 等待端口释放
+        sleep 2
+        
+        # 再次检查
+        if ! check_port 3000; then
+            log_success "端口 3000 已成功释放"
+            break
+        fi
+        
+        attempt=$((attempt + 1))
+    done
+    
+    # 如果仍然被占用，显示详细信息
+    if check_port 3000; then
+        log_error "端口 3000 仍然被占用，显示详细信息："
+        echo "=== 端口占用详情 ==="
+        if command -v lsof >/dev/null 2>&1; then
+            lsof -i:3000 2>/dev/null || echo "lsof 不可用"
+        fi
+        if command -v netstat >/dev/null 2>&1; then
+            netstat -tulpn 2>/dev/null | grep ":3000 " || echo "netstat 未找到占用进程"
+        fi
+        echo "=================="
+        log_error "请手动清理端口后重试"
+        exit 1
     fi
     
     # 根据参数决定启动方式

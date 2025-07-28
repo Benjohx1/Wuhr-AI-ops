@@ -129,7 +129,7 @@ npm start
 
 - **Username**: admin
 - **Email**: admin@wuhr.ai
-- **Password**: Please check database or reset with admin script
+- **Password**: Admin123!
 
 ## 📦 Deployment Guide
 

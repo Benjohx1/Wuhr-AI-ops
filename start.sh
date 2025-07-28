@@ -98,12 +98,11 @@ main() {
     
     # 检查环境变量文件
     if [ ! -f ".env" ]; then
-        log_warning ".env 文件不存在，正在创建..."
+        log_info ".env 文件不存在，正在创建默认配置..."
         if [ -f ".env.example" ]; then
             cp .env.example .env
-            log_success "已创建 .env 文件，请编辑配置后重新运行"
-            log_info "请编辑 .env 文件配置数据库和AI API密钥"
-            exit 1
+            log_success "已创建 .env 文件，使用默认配置继续启动"
+            log_info "如需自定义配置，可以编辑 .env 文件后重新启动"
         else
             log_error ".env.example 文件不存在，无法创建配置文件"
             exit 1
@@ -137,7 +136,12 @@ main() {
     if npx prisma migrate deploy; then
         log_success "数据库迁移完成"
     else
-        log_warning "数据库迁移失败，可能需要手动处理"
+        log_warning "数据库迁移失败，尝试重置数据库..."
+        if npx prisma migrate reset --force; then
+            log_success "数据库重置完成"
+        else
+            log_warning "数据库操作失败，继续启动应用..."
+        fi
     fi
     
     # 生成Prisma客户端
@@ -175,10 +179,15 @@ main() {
     echo "👤 默认账户："
     echo "   用户名: admin"
     echo "   邮箱: admin@wuhr.ai"
-    echo "   密码: 请查看数据库或重置密码"
+    echo "   密码: Admin123!"
     echo ""
     echo "📝 日志文件: app.log"
     echo "🔄 停止服务: docker-compose down && kill $APP_PID"
+    echo ""
+    echo "💡 提示："
+    echo "- 首次启动可能需要等待几分钟"
+    echo "- 如果无法访问，请检查端口3000是否被占用"
+    echo "- AI功能需要配置OpenAI API密钥"
     echo ""
     echo "如遇问题，请查看："
     echo "- 应用日志: tail -f app.log"

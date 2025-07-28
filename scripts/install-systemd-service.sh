@@ -159,12 +159,12 @@ User=$SERVICE_USER
 Group=$SERVICE_GROUP
 WorkingDirectory=$PROJECT_DIR
 Environment=NODE_ENV=production
-Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:$(dirname $NODE_PATH)
 Environment=HOME=$PROJECT_DIR
-ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && npm install'
-ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && npm run build'
-ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && npx prisma generate'
-ExecStart=/bin/bash -c 'cd $PROJECT_DIR && npm start'
+ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && $NPM_PATH install'
+ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && $NPM_PATH run build'
+ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && $NPM_PATH exec prisma generate'
+ExecStart=/bin/bash -c 'cd $PROJECT_DIR && $NPM_PATH start'
 ExecReload=/bin/kill -USR2 \$MAINPID
 Restart=always
 RestartSec=10

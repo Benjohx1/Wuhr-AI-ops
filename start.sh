@@ -250,6 +250,32 @@ main() {
     echo "   - npm >= 8.0.0"
     echo ""
     
+    # 询问启动方式
+    echo "🚀 启动方式选择："
+    echo "1) 前台运行 (开发模式，可查看实时日志)"
+    echo "2) 安装为系统服务 (生产模式，开机自启)"
+    echo ""
+    
+    while true; do
+        read -p "请选择启动方式 [1-2]: " startup_choice
+        case $startup_choice in
+            1)
+                log_info "选择前台运行模式"
+                SYSTEMD_MODE=false
+                break
+                ;;
+            2)
+                log_info "选择系统服务模式"
+                SYSTEMD_MODE=true
+                break
+                ;;
+            *)
+                echo "⚠️  请输入 1 或 2"
+                ;;
+        esac
+    done
+    echo ""
+    
     # 检查并安装环境
     log_info "检查系统环境..."
     check_and_install_environment
@@ -407,35 +433,54 @@ main() {
         log_success "权限系统初始化完成"
     fi
     
-    # 启动应用
-    log_info "构建应用..."
-    BUILD_SUCCESS=false
-    
-    if npm run build >/dev/null 2>&1; then
-        log_success "应用构建完成"
-        BUILD_SUCCESS=true
+    # 如果是systemd模式，跳过前台启动
+    if [ "$SYSTEMD_MODE" = true ]; then
+        log_info "systemd模式：准备安装服务，跳过前台启动"
     else
-        log_warning "应用构建失败，使用开发模式..."
+        # 启动应用
+        log_info "构建应用..."
         BUILD_SUCCESS=false
+        
+        if npm run build >/dev/null 2>&1; then
+            log_success "应用构建完成"
+            BUILD_SUCCESS=true
+        else
+            log_warning "应用构建失败，使用开发模式..."
+            BUILD_SUCCESS=false
+        fi
+        
+        # 根据构建结果启动对应模式
+        if [ "$BUILD_SUCCESS" = true ]; then
+            log_info "启动生产服务器..."
+            nohup npm start > app.log 2>&1 &
+            APP_PID=$!
+        else
+            log_info "启动开发服务器..."
+            npm run dev > app.log 2>&1 &
+            APP_PID=$!
+        fi
     fi
     
-    # 根据构建结果启动对应模式
-    if [ "$BUILD_SUCCESS" = true ]; then
-        log_info "启动生产服务器..."
-        nohup npm start > app.log 2>&1 &
-        APP_PID=$!
+    # 根据模式选择不同的完成流程
+    if [ "$SYSTEMD_MODE" = true ]; then
+        # systemd服务模式
+        log_info "安装 systemd 服务..."
+        if [ -f "scripts/install-systemd-service.sh" ]; then
+            sudo ./scripts/install-systemd-service.sh
+        else
+            log_error "systemd 安装脚本不存在"
+            exit 1
+        fi
+        return
     else
-        log_info "启动开发服务器..."
-        npm run dev > app.log 2>&1 &
-        APP_PID=$!
+        # 前台运行模式
+        # 等待应用启动
+        wait_for_service "http://localhost:3000" "主应用"
+        
+        echo ""
+        echo "🎉 Wuhr AI Ops 启动完成！"
+        echo "================================"
     fi
-    
-    # 等待应用启动
-    wait_for_service "http://localhost:3000" "主应用"
-    
-    echo ""
-    echo "🎉 Wuhr AI Ops 启动完成！"
-    echo "================================"
     echo "🌐 访问地址："
     
     # 获取内网IP

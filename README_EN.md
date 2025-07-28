@@ -205,31 +205,6 @@ npm run build
 npm start
 ```
 
-### Environment Variables
-
-```env
-# Database configuration
-DATABASE_URL="postgresql://user:password@localhost:5432/wuhr_ai_ops"
-
-# Redis configuration
-REDIS_URL="redis://localhost:6379"
-
-# JWT secret
-JWT_SECRET="your-super-secret-jwt-key"
-
-# AI model configuration
-OPENAI_API_KEY="sk-your-openai-api-key"
-OPENAI_BASE_URL="https://api.openai.com/v1"
-
-GOOGLE_API_KEY="your-google-api-key"
-
-# Admin email
-ADMIN_EMAIL="admin@example.com"
-
-# Application configuration
-NEXT_PUBLIC_APP_URL="http://localhost:3000"
-```
-
 ## 📖 User Guide
 
 ### AI Assistant Usage

@@ -101,6 +101,10 @@ cd Wuhr-AI-ops
 ```
 
 > **🔧 智能环境检测**：脚本会自动检测系统环境，如果缺少Docker、Node.js等必需组件，会询问是否自动安装
+> 
+> **⚙️ 启动方式选择**：
+> - **前台运行模式**：开发测试使用，可查看实时日志
+> - **系统服务模式**：生产环境使用，开机自启，后台运行
 
 ### 手动部署
 
@@ -133,6 +137,40 @@ npm start
 - **用户名**: admin
 - **邮箱**: admin@wuhr.ai
 - **密码**: Admin123!
+
+## ⚙️ 系统服务管理
+
+### Systemd 服务操作
+
+```bash
+# 查看服务状态
+sudo systemctl status wuhr-ai-ops
+
+# 启动服务
+sudo systemctl start wuhr-ai-ops
+
+# 停止服务
+sudo systemctl stop wuhr-ai-ops
+
+# 重启服务
+sudo systemctl restart wuhr-ai-ops
+
+# 查看服务日志
+sudo journalctl -u wuhr-ai-ops -f
+
+# 开机自启
+sudo systemctl enable wuhr-ai-ops
+
+# 取消开机自启
+sudo systemctl disable wuhr-ai-ops
+```
+
+### 卸载系统服务
+
+```bash
+# 卸载systemd服务
+sudo ./scripts/uninstall-systemd-service.sh
+```
 
 ## 📦 部署指南
 
@@ -203,31 +241,6 @@ npm run build
 
 # 启动生产服务器
 npm start
-```
-
-### 环境变量配置
-
-```env
-# 数据库配置
-DATABASE_URL="postgresql://user:password@localhost:5432/wuhr_ai_ops"
-
-# Redis配置
-REDIS_URL="redis://localhost:6379"
-
-# JWT密钥
-JWT_SECRET="your-super-secret-jwt-key"
-
-# AI模型配置
-OPENAI_API_KEY="sk-your-openai-api-key"
-OPENAI_BASE_URL="https://api.openai.com/v1"
-
-GOOGLE_API_KEY="your-google-api-key"
-
-# 管理员邮箱
-ADMIN_EMAIL="admin@example.com"
-
-# 应用配置
-NEXT_PUBLIC_APP_URL="http://localhost:3000"
 ```
 
 ## 📖 使用文档

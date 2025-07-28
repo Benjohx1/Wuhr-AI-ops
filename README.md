@@ -169,74 +169,26 @@ tail -f app.log
 
 ## 📦 部署指南
 
-### 手动部署
+### 一键部署（推荐）
 
-1. **环境准备**
 ```bash
 # 克隆项目
 git clone https://github.com/st-lzh/Wuhr-AI-ops.git
 cd Wuhr-AI-ops
 
-# 安装Docker和Docker Compose
-curl -fsSL https://get.docker.com -o get-docker.sh
-sh get-docker.sh
+# 一键安装和启动
+./install.sh
 ```
 
-2. **配置环境**
-```bash
-# 复制环境变量模板
-cp .env.example .env
+### 高级部署
 
-# 编辑配置文件
-vim .env
-```
+如需自定义部署或了解详细步骤，请参考：
 
-3. **启动服务**
-```bash
-# 后台启动所有服务
-docker-compose up -d
+- **Docker部署**：使用 `docker-compose up -d` 启动容器化服务
+- **传统部署**：手动安装Node.js、PostgreSQL、Redis等依赖
+- **开发环境**：使用 `npm run dev` 启动开发服务器
 
-# 查看服务状态
-docker-compose ps
-
-# 查看日志
-docker-compose logs -f app
-```
-
-### 传统部署
-
-1. **安装依赖**
-```bash
-# 安装Node.js依赖
-npm install
-
-# 安装并配置PostgreSQL
-sudo apt-get install postgresql postgresql-contrib
-
-# 安装并配置Redis
-sudo apt-get install redis-server
-```
-
-2. **配置数据库**
-```bash
-# 创建数据库
-sudo -u postgres createdb wuhr_ai_ops
-
-# 运行数据库迁移
-npx prisma migrate deploy
-
-# 初始化数据
-npm run db:seed
-```
-
-3. **启动应用**
-```bash
-# 构建应用
-npm run build
-
-# 启动生产服务器
-npm start
-```
+详细部署文档请查看项目源码中的 `install.sh` 脚本。
 
 ## 📖 使用文档
 

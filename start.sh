@@ -129,18 +129,50 @@ main() {
     
     # 等待数据库启动
     log_info "等待数据库启动..."
-    sleep 10
+    sleep 5
+    
+    # 检查数据库连接
+    log_info "检查数据库连接..."
+    local db_ready=false
+    for i in {1..30}; do
+        if docker-compose exec -T postgres pg_isready -U wuhr_admin -h localhost >/dev/null 2>&1; then
+            db_ready=true
+            break
+        fi
+        echo -n "."
+        sleep 2
+    done
+    
+    if [ "$db_ready" = true ]; then
+        log_success "数据库连接正常"
+    else
+        log_warning "数据库连接超时，继续尝试..."
+    fi
     
     # 数据库迁移
     log_info "执行数据库迁移..."
     if npx prisma migrate deploy; then
         log_success "数据库迁移完成"
     else
-        log_warning "数据库迁移失败，尝试重置数据库..."
-        if npx prisma migrate reset --force; then
-            log_success "数据库重置完成"
+        log_warning "数据库迁移失败，尝试清理并重新创建..."
+        
+        # 尝试删除数据库并重新创建
+        log_info "清理数据库..."
+        docker-compose exec -T postgres psql -U wuhr_admin -c "DROP DATABASE IF EXISTS wuhr_ai_ops;" 2>/dev/null || true
+        docker-compose exec -T postgres psql -U wuhr_admin -c "CREATE DATABASE wuhr_ai_ops;" 2>/dev/null || true
+        
+        # 重新尝试迁移
+        log_info "重新执行数据库迁移..."
+        if npx prisma migrate deploy; then
+            log_success "数据库重新创建成功"
         else
-            log_warning "数据库操作失败，继续启动应用..."
+            log_warning "使用开发模式迁移..."
+            if npx prisma migrate dev --name init 2>/dev/null; then
+                log_success "开发模式迁移完成"
+            else
+                log_warning "数据库操作失败，尝试直接推送Schema..."
+                npx prisma db push --force-reset 2>/dev/null || true
+            fi
         fi
     fi
     
@@ -153,19 +185,40 @@ main() {
         exit 1
     fi
     
+    # 初始化数据
+    log_info "初始化系统数据..."
+    if [ -f "scripts/init-super-admin.js" ]; then
+        node scripts/init-super-admin.js 2>/dev/null || log_warning "管理员初始化跳过"
+    fi
+    
+    if [ -f "scripts/init-permissions.js" ]; then
+        node scripts/init-permissions.js 2>/dev/null || log_warning "权限初始化跳过"
+    fi
+    
     # 启动应用
-    log_info "启动应用服务..."
+    log_info "构建应用..."
     if npm run build; then
         log_success "应用构建完成"
     else
-        log_error "应用构建失败"
-        exit 1
+        log_warning "应用构建失败，尝试开发模式..."
+        if npm run dev &; then
+            log_info "使用开发模式启动"
+            sleep 5
+        else
+            log_error "应用启动失败"
+            exit 1
+        fi
     fi
     
-    # 后台启动应用
-    log_info "启动应用服务器..."
-    nohup npm start > app.log 2>&1 &
-    APP_PID=$!
+    # 后台启动应用（如果构建成功）
+    if [ -d ".next" ]; then
+        log_info "启动生产服务器..."
+        nohup npm start > app.log 2>&1 &
+        APP_PID=$!
+    else
+        log_info "应用已在开发模式运行"
+        APP_PID=$(pgrep -f "npm run dev" | head -1)
+    fi
     
     # 等待应用启动
     wait_for_service "http://localhost:3000" "主应用"

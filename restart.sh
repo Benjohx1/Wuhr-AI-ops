@@ -11,6 +11,36 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# 端口检查函数
+check_port() {
+    local port=$1
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -i:$port >/dev/null 2>&1
+    elif command -v netstat >/dev/null 2>&1; then
+        netstat -tuln 2>/dev/null | grep -q ":$port "
+    elif command -v ss >/dev/null 2>&1; then
+        ss -tuln 2>/dev/null | grep -q ":$port "
+    else
+        return 1
+    fi
+}
+
+# 强制清理端口函数
+force_clean_port() {
+    local port=$1
+    log_warning "强制清理端口 $port..."
+    
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -ti:$port | xargs kill -9 2>/dev/null || true
+    elif command -v netstat >/dev/null 2>&1; then
+        netstat -tulpn 2>/dev/null | grep ":$port " | awk '{print $7}' | cut -d'/' -f1 | xargs kill -9 2>/dev/null || true
+    elif command -v ss >/dev/null 2>&1; then
+        ss -tulpn 2>/dev/null | grep ":$port " | awk '{print $7}' | cut -d'/' -f1 | xargs kill -9 2>/dev/null || true
+    fi
+    
+    sleep 2
+}
+
 log_info() {
     echo -e "${BLUE}[信息]${NC} $1"
 }
@@ -48,7 +78,10 @@ stop_service() {
     # 强制停止相关进程
     pkill -f "next start" 2>/dev/null || true
     pkill -f "npm start" 2>/dev/null || true
-    sleep 2
+    pkill -f "node.*next" 2>/dev/null || true
+    
+    # 强制清理端口3000
+    force_clean_port 3000
 }
 
 # 启动服务函数
@@ -56,10 +89,9 @@ start_service() {
     log_info "启动服务..."
     
     # 检查端口
-    if netstat -tuln 2>/dev/null | grep -q ":3000 "; then
+    if check_port 3000; then
         log_warning "端口 3000 仍被占用，强制清理..."
-        pkill -f ":3000" 2>/dev/null || true
-        sleep 2
+        force_clean_port 3000
     fi
     
     # 根据参数决定启动方式

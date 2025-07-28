@@ -169,17 +169,17 @@ tail -f app.log
 
 ## 📦 部署指南
 
-### Docker部署 (推荐)
+### 手动部署
 
 1. **环境准备**
 ```bash
-# 安装Docker和Docker Compose
-curl -fsSL https://get.docker.com -o get-docker.sh
-sh get-docker.sh
-
 # 克隆项目
 git clone https://github.com/st-lzh/Wuhr-AI-ops.git
 cd Wuhr-AI-ops
+
+# 安装Docker和Docker Compose
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
 ```
 
 2. **配置环境**
@@ -203,7 +203,7 @@ docker-compose ps
 docker-compose logs -f app
 ```
 
-### 手动部署
+### 传统部署
 
 1. **安装依赖**
 ```bash

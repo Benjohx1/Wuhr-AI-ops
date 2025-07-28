@@ -167,28 +167,7 @@ tail -f app.log
 - 🌐 **多IP显示**：自动显示内网和外网访问地址
 - 📝 **日志管理**：统一日志输出到app.log文件
 
-## 📦 部署指南
 
-### 一键部署（推荐）
-
-```bash
-# 克隆项目
-git clone https://github.com/st-lzh/Wuhr-AI-ops.git
-cd Wuhr-AI-ops
-
-# 一键安装和启动
-./install.sh
-```
-
-### 高级部署
-
-如需自定义部署或了解详细步骤，请参考：
-
-- **Docker部署**：使用 `docker-compose up -d` 启动容器化服务
-- **传统部署**：手动安装Node.js、PostgreSQL、Redis等依赖
-- **开发环境**：使用 `npm run dev` 启动开发服务器
-
-详细部署文档请查看项目源码中的 `install.sh` 脚本。
 
 ## 📖 使用文档
 

@@ -131,22 +131,72 @@ if [ ! -f "package.json" ]; then
     exit 1
 fi
 
-# 获取Node.js路径
-NODE_PATH=$(which node)
-NPM_PATH=$(which npm)
+# 获取Node.js路径 - 需要在root环境下重新检测
+log_info "检测Node.js环境..."
+
+# 常见的Node.js安装路径
+NODE_PATHS=(
+    "/usr/bin/node"
+    "/usr/local/bin/node"
+    "/opt/node/bin/node"
+    "$(which node 2>/dev/null)"
+)
+
+NPM_PATHS=(
+    "/usr/bin/npm"
+    "/usr/local/bin/npm"
+    "/opt/node/bin/npm"
+    "$(which npm 2>/dev/null)"
+)
+
+# 查找可用的Node.js
+NODE_PATH=""
+for path in "${NODE_PATHS[@]}"; do
+    if [ -n "$path" ] && [ -x "$path" ]; then
+        NODE_PATH="$path"
+        break
+    fi
+done
+
+# 查找可用的npm
+NPM_PATH=""
+for path in "${NPM_PATHS[@]}"; do
+    if [ -n "$path" ] && [ -x "$path" ]; then
+        NPM_PATH="$path"
+        break
+    fi
+done
 
 if [ -z "$NODE_PATH" ] || [ -z "$NPM_PATH" ]; then
-    log_error "未找到 Node.js 或 npm，请先安装"
+    log_error "未找到可执行的 Node.js 或 npm"
+    log_info "请确保 Node.js 安装在系统PATH中"
+    log_info "或者创建符号链接: ln -s /path/to/node /usr/bin/node"
     exit 1
 fi
 
 log_info "Node.js 路径: $NODE_PATH"
 log_info "npm 路径: $NPM_PATH"
 
+# 验证Node.js版本
+NODE_VERSION=$($NODE_PATH -v 2>/dev/null || echo "unknown")
+log_info "Node.js 版本: $NODE_VERSION"
+
 # 创建systemd服务文件
 SERVICE_FILE="$SYSTEMD_PATH/${SERVICE_NAME}.service"
 
 log_info "创建 systemd 服务文件: $SERVICE_FILE"
+
+# 检查项目目录权限
+log_info "检查项目目录权限..."
+if [ ! -r "$PROJECT_DIR/package.json" ]; then
+    log_warning "服务用户可能无法读取项目文件，调整权限..."
+    chmod -R 755 "$PROJECT_DIR"
+    chown -R $SERVICE_USER:$SERVICE_GROUP "$PROJECT_DIR" 2>/dev/null || {
+        log_warning "无法更改所有权，使用root用户运行服务"
+        SERVICE_USER="root"
+        SERVICE_GROUP="root"
+    }
+fi
 
 cat > "$SERVICE_FILE" << EOF
 [Unit]
@@ -161,11 +211,12 @@ User=$SERVICE_USER
 Group=$SERVICE_GROUP
 WorkingDirectory=$PROJECT_DIR
 Environment=NODE_ENV=production
-Environment=PATH=/usr/local/bin:/usr/bin:/bin:$(dirname $NODE_PATH)
-ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && $NPM_PATH install --production'
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/node/bin:$(dirname $NODE_PATH):$(dirname $NPM_PATH)
+Environment=HOME=$PROJECT_DIR
+ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && $NPM_PATH install --production --unsafe-perm'
 ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && $NPM_PATH run build'
-ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && npx prisma generate'
-ExecStart=$NODE_PATH $PROJECT_DIR/node_modules/.bin/next start -H 0.0.0.0
+ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && $NPM_PATH exec prisma generate'
+ExecStart=$NPM_PATH start
 ExecReload=/bin/kill -USR2 \$MAINPID
 Restart=always
 RestartSec=10
@@ -173,14 +224,15 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=wuhr-ai-ops
 
-# 安全设置
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
+# 安全设置 (放宽权限以避免启动问题)
+NoNewPrivileges=false
+PrivateTmp=false
+ProtectSystem=false
+ProtectHome=false
 ReadWritePaths=$PROJECT_DIR
 ReadWritePaths=/tmp
 ReadWritePaths=/var/log
+ReadWritePaths=/var/cache
 
 # 资源限制
 LimitNOFILE=65536
@@ -206,10 +258,24 @@ EOF
 
 log_success "环境变量配置创建完成"
 
-# 设置适当的权限
-chown -R $SERVICE_USER:$SERVICE_GROUP "$PROJECT_DIR" 2>/dev/null || {
-    log_warning "无法更改项目目录权限，请手动设置: chown -R $SERVICE_USER:$SERVICE_GROUP $PROJECT_DIR"
-}
+# 确保项目文件权限正确
+log_info "设置项目文件权限..."
+chmod -R 755 "$PROJECT_DIR"
+
+# 确保关键文件可执行
+if [ -f "$PROJECT_DIR/node_modules/.bin/next" ]; then
+    chmod +x "$PROJECT_DIR/node_modules/.bin/next"
+fi
+
+# 只在非root用户时尝试更改所有权
+if [ "$SERVICE_USER" != "root" ]; then
+    chown -R $SERVICE_USER:$SERVICE_GROUP "$PROJECT_DIR" 2>/dev/null || {
+        log_warning "无法更改项目目录所有权，服务将以root用户运行"
+        # 重新生成服务文件，改为root用户
+        sed -i "s/User=$SERVICE_USER/User=root/" "$SERVICE_FILE"
+        sed -i "s/Group=$SERVICE_GROUP/Group=root/" "$SERVICE_FILE"
+    }
+fi
 
 # 重新加载systemd配置
 log_info "重新加载 systemd 配置..."

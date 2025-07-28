@@ -97,7 +97,7 @@ git clone https://github.com/st-lzh/Wuhr-AI-ops.git
 cd Wuhr-AI-ops
 
 # 一键启动（自动检测环境、安装依赖、启动服务）
-./start.sh
+./install.sh
 ```
 
 > **🔧 智能环境检测**：脚本会自动检测系统环境，如果缺少Docker、Node.js等必需组件，会询问是否自动安装
@@ -144,10 +144,10 @@ npm start
 
 ```bash
 # 启动服务（后台运行）
-./scripts/run-service.sh
+./restart.sh
 
 # 停止服务
-./scripts/run-service.sh stop
+./restart.sh stop
 
 # 查看日志
 tail -f app.log

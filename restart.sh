@@ -97,8 +97,8 @@ start_service() {
         echo ""
         echo "📝 管理命令:"
         echo "  查看日志: tail -f $LOG_FILE"
-        echo "  重启服务: ./scripts/run-service.sh"
-        echo "  停止服务: ./scripts/run-service.sh stop"
+        echo "  重启服务: ./restart.sh"
+        echo "  停止服务: ./restart.sh stop"
         echo ""
     else
         log_error "服务启动失败"

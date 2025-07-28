@@ -97,7 +97,7 @@ git clone https://github.com/st-lzh/Wuhr-AI-ops.git
 cd Wuhr-AI-ops
 
 # One-click start (auto detect environment, install dependencies, start services)
-./start.sh
+./install.sh
 ```
 
 > **🔧 Smart Environment Detection**: The script automatically detects system environment and asks if you want to auto-install missing components like Docker, Node.js, etc.

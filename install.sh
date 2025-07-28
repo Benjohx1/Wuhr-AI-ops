@@ -183,7 +183,7 @@ check_and_install_environment() {
                     echo ""
                     echo "📝 下一步操作："
                     echo "1. 如果安装了Docker，请确保Docker服务已启动"
-                    echo "2. 重新运行此脚本：./start.sh"
+                    echo "2. 重新运行此脚本：./install.sh"
                     echo ""
                     exit 0
                     ;;

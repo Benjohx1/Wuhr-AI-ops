@@ -28,6 +28,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# But keep app/servers/logs (it's a page, not log files)
+!app/servers/logs/
+
 # Runtime data
 pids/
 *.pid

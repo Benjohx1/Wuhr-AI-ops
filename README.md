@@ -143,11 +143,17 @@ npm start
 ### 快速服务安装
 
 ```bash
-# 1. 安装systemd服务（自动检测系统）
+# 方式1：一键修复并安装（推荐）
+./scripts/fix-and-install.sh
+
+# 方式2：手动安装
 sudo ./scripts/install-systemd-service.sh
 
-# 2. 如果遇到问题，使用诊断工具
+# 如果遇到问题，使用诊断工具
 sudo ./scripts/diagnose-systemd.sh
+
+# 强制清理服务（解决安装冲突）
+sudo ./scripts/force-clean-systemd.sh
 ```
 
 ### 系统兼容性
@@ -189,9 +195,20 @@ sudo systemctl disable wuhr-ai-ops
 
 ### 服务管理脚本
 
-#### 🔧 安装systemd服务
+#### 🚀 一键修复安装（推荐）
 ```bash
-# 自动检测系统，安装并配置systemd服务
+# 自动修复TypeScript问题并安装systemd服务
+./scripts/fix-and-install.sh
+```
+**功能特性**：
+- 🧹 **自动清理**：清理旧服务和冲突状态
+- 🔧 **依赖修复**：自动安装和修复TypeScript类型声明
+- ✅ **构建验证**：安装前验证项目可以正常构建
+- 📦 **完整安装**：一步完成服务安装和配置
+
+#### 🔧 手动安装systemd服务
+```bash
+# 仅安装systemd服务（需要手动处理依赖问题）
 sudo ./scripts/install-systemd-service.sh
 ```
 **功能特性**：

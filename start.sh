@@ -201,23 +201,20 @@ main() {
         log_success "应用构建完成"
     else
         log_warning "应用构建失败，尝试开发模式..."
-        if npm run dev &; then
-            log_info "使用开发模式启动"
-            sleep 5
-        else
-            log_error "应用启动失败"
-            exit 1
-        fi
+        npm run dev > app.log 2>&1 &
+        DEV_PID=$!
+        log_info "使用开发模式启动"
+        sleep 5
     fi
     
     # 后台启动应用（如果构建成功）
-    if [ -d ".next" ]; then
+    if [ -d ".next" ] && [ -f ".next/BUILD_ID" ]; then
         log_info "启动生产服务器..."
         nohup npm start > app.log 2>&1 &
         APP_PID=$!
     else
         log_info "应用已在开发模式运行"
-        APP_PID=$(pgrep -f "npm run dev" | head -1)
+        APP_PID=${DEV_PID:-$(pgrep -f "npm run dev" | head -1)}
     fi
     
     # 等待应用启动

@@ -116,55 +116,19 @@ if [ ! -f "package.json" ]; then
     exit 1
 fi
 
-# 获取Node.js路径 - 需要在root环境下重新检测
+# 简单直接的Node.js路径检测
 log_info "检测Node.js环境..."
 
-# 常见的Node.js安装路径
-NODE_PATHS=(
-    "/usr/bin/node"
-    "/usr/local/bin/node"
-    "/opt/node/bin/node"
-    "$(which node 2>/dev/null)"
-)
-
-NPM_PATHS=(
-    "/usr/bin/npm"
-    "/usr/local/bin/npm"
-    "/opt/node/bin/npm"
-    "$(which npm 2>/dev/null)"
-)
-
-# 查找可用的Node.js
-NODE_PATH=""
-for path in "${NODE_PATHS[@]}"; do
-    if [ -n "$path" ] && [ -x "$path" ]; then
-        NODE_PATH="$path"
-        break
-    fi
-done
-
-# 查找可用的npm
-NPM_PATH=""
-for path in "${NPM_PATHS[@]}"; do
-    if [ -n "$path" ] && [ -x "$path" ]; then
-        NPM_PATH="$path"
-        break
-    fi
-done
+NODE_PATH=$(which node)
+NPM_PATH=$(which npm)
 
 if [ -z "$NODE_PATH" ] || [ -z "$NPM_PATH" ]; then
-    log_error "未找到可执行的 Node.js 或 npm"
-    log_info "请确保 Node.js 安装在系统PATH中"
-    log_info "或者创建符号链接: ln -s /path/to/node /usr/bin/node"
+    log_error "未找到 Node.js 或 npm，请先安装"
     exit 1
 fi
 
 log_info "Node.js 路径: $NODE_PATH"
 log_info "npm 路径: $NPM_PATH"
-
-# 验证Node.js版本
-NODE_VERSION=$($NODE_PATH -v 2>/dev/null || echo "unknown")
-log_info "Node.js 版本: $NODE_VERSION"
 
 # 创建systemd服务文件
 SERVICE_FILE="$SYSTEMD_PATH/${SERVICE_NAME}.service"
@@ -188,12 +152,12 @@ User=$SERVICE_USER
 Group=$SERVICE_GROUP
 WorkingDirectory=$PROJECT_DIR
 Environment=NODE_ENV=production
-Environment=PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/node/bin:$(dirname $NODE_PATH):$(dirname $NPM_PATH)
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=HOME=$PROJECT_DIR
-ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && $NPM_PATH install --unsafe-perm'
-ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && $NPM_PATH run build'
-ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && $NPM_PATH exec prisma generate'
-ExecStart=$NPM_PATH start
+ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && npm install'
+ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && npm run build'
+ExecStartPre=/bin/bash -c 'cd $PROJECT_DIR && npx prisma generate'
+ExecStart=/bin/bash -c 'cd $PROJECT_DIR && npm start'
 ExecReload=/bin/kill -USR2 \$MAINPID
 Restart=always
 RestartSec=10

@@ -2,8 +2,6 @@
 
 <div align="center">
 
-![Logo](https://wuhrai-wordpress.oss-cn-hangzhou.aliyuncs.com/%E5%9B%BE%E6%A0%87/%E5%88%9B%E5%BB%BA%E8%B5%9B%E5%8D%9A%E6%9C%8B%E5%85%8B%E5%9B%BE%E6%A0%87%20%283%29.png)
-
 **🚀 智能化运维管理平台 - 让AI为运维赋能**
 
 [![GitHub stars](https://img.shields.io/github/stars/st-lzh/Wuhr-AI-ops?style=social)](https://github.com/st-lzh/Wuhr-AI-ops/stargazers)
@@ -79,38 +77,6 @@
 - **数据备份** - 自动化数据备份和恢复
 - **健康检查** - 系统组件健康状态监控
 
-## 🏗️ 技术架构
-
-### 前端技术栈
-
-- **框架**: Next.js 14 (App Router)
-- **UI库**: Ant Design + Tailwind CSS
-- **状态管理**: React Context API
-- **类型检查**: TypeScript
-- **构建工具**: Turbopack
-
-### 后端技术栈
-
-- **运行时**: Node.js
-- **数据库**: PostgreSQL + Prisma ORM
-- **缓存**: Redis
-- **认证**: JWT + bcrypt
-- **文件存储**: 本地文件系统
-
-### DevOps技术栈
-
-- **容器化**: Docker + Docker Compose
-- **监控**: ELK Stack + Grafana
-- **CI/CD**: Jenkins
-- **代理**: Nginx (可选)
-
-### AI集成
-
-- **OpenAI**: GPT-4o, GPT-4, GPT-3.5-turbo
-- **Google**: Gemini Pro Vision
-- **自部署**: Ollama, vLLM等兼容OpenAI API的模型
-- **第三方**: 支持各种OpenAI兼容的API服务
-
 ## 🚀 快速开始
 
 ### 系统要求
@@ -122,37 +88,48 @@
 - **内存**: >= 4GB
 - **硬盘**: >= 20GB 可用空间
 
-### 一键部署
+### 一键启动
 
 ```bash
 # 克隆项目
 git clone https://github.com/st-lzh/Wuhr-AI-ops.git
 cd Wuhr-AI-ops
 
+# 一键启动（自动检测环境、安装依赖、启动服务）
+./start.sh
+```
+
+### 手动部署
+
+```bash
 # 配置环境变量
 cp .env.example .env
 # 编辑 .env 文件，配置数据库和AI API密钥
 
-# 启动服务
+# 安装依赖
+npm install
+
+# 启动Docker服务
 docker-compose up -d
 
-# 初始化数据库
-npm run db:init
+# 数据库迁移
+npx prisma migrate deploy
+npx prisma generate
 
-# 创建管理员账户
-npm run admin:create
+# 启动应用
+npm run build
+npm start
 ```
 
 ### 访问地址
 
 - **主应用**: http://localhost:3000
-- **Grafana**: http://localhost:3001
-- **Kibana**: http://localhost:5601
 
 ### 默认账户
 
 - **用户名**: admin
-- **密码**: admin123 (首次登录后请修改)
+- **邮箱**: admin@wuhr.ai
+- **密码**: 请查看数据库或使用管理员脚本重置
 
 ## 📦 部署指南
 

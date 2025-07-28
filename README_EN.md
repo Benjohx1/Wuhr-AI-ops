@@ -2,8 +2,6 @@
 
 <div align="center">
 
-![Logo](https://wuhrai-wordpress.oss-cn-hangzhou.aliyuncs.com/%E5%9B%BE%E6%A0%87/%E5%88%9B%E5%BB%BA%E8%B5%9B%E5%8D%9A%E6%9C%8B%E5%85%8B%E5%9B%BE%E6%A0%87%20%283%29.png)
-
 **🚀 AI-Powered Intelligent Operations Management Platform**
 
 [![GitHub stars](https://img.shields.io/github/stars/st-lzh/Wuhr-AI-ops?style=social)](https://github.com/st-lzh/Wuhr-AI-ops/stargazers)
@@ -79,38 +77,6 @@ English | [简体中文](./README.md)
 - **Data Backup** - Automated data backup and recovery
 - **Health Check** - System component health status monitoring
 
-## 🏗️ Technology Stack
-
-### Frontend
-
-- **Framework**: Next.js 14 (App Router)
-- **UI Library**: Ant Design + Tailwind CSS
-- **State Management**: React Context API
-- **Type Checking**: TypeScript
-- **Build Tool**: Turbopack
-
-### Backend
-
-- **Runtime**: Node.js
-- **Database**: PostgreSQL + Prisma ORM
-- **Cache**: Redis
-- **Authentication**: JWT + bcrypt
-- **File Storage**: Local File System
-
-### DevOps
-
-- **Containerization**: Docker + Docker Compose
-- **Monitoring**: ELK Stack + Grafana
-- **CI/CD**: Jenkins
-- **Proxy**: Nginx (Optional)
-
-### AI Integration
-
-- **OpenAI**: GPT-4o, GPT-4, GPT-3.5-turbo
-- **Google**: Gemini Pro Vision
-- **Self-hosted**: Ollama, vLLM and other OpenAI API compatible models
-- **Third-party**: Support for various OpenAI compatible API services
-
 ## 🚀 Quick Start
 
 ### System Requirements
@@ -122,37 +88,48 @@ English | [简体中文](./README.md)
 - **Memory**: >= 4GB
 - **Storage**: >= 20GB available space
 
-### One-click Deployment
+### One-click Start
 
 ```bash
 # Clone the project
 git clone https://github.com/st-lzh/Wuhr-AI-ops.git
 cd Wuhr-AI-ops
 
+# One-click start (auto detect environment, install dependencies, start services)
+./start.sh
+```
+
+### Manual Deployment
+
+```bash
 # Configure environment variables
 cp .env.example .env
 # Edit .env file to configure database and AI API keys
 
-# Start services
+# Install dependencies
+npm install
+
+# Start Docker services
 docker-compose up -d
 
-# Initialize database
-npm run db:init
+# Database migration
+npx prisma migrate deploy
+npx prisma generate
 
-# Create admin account
-npm run admin:create
+# Start application
+npm run build
+npm start
 ```
 
 ### Access URLs
 
 - **Main Application**: http://localhost:3000
-- **Grafana**: http://localhost:3001
-- **Kibana**: http://localhost:5601
 
 ### Default Account
 
 - **Username**: admin
-- **Password**: admin123 (Please change after first login)
+- **Email**: admin@wuhr.ai
+- **Password**: Please check database or reset with admin script
 
 ## 📦 Deployment Guide
 

@@ -82,7 +82,8 @@ English | [简体中文](./README.md)
 ### System Requirements
 
 - **OS**: Linux/macOS/Windows
-- **Node.js**: >= 18.0.0
+- **Node.js**: >= 18.0.0 (Recommended 20.0+)
+- **npm**: >= 8.0.0 (Recommended 10.0+)
 - **Docker**: >= 20.10.0
 - **Docker Compose**: >= 2.0.0
 - **Memory**: >= 4GB

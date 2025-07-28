@@ -84,12 +84,30 @@ main() {
     echo "🚀 Wuhr AI Ops 一键启动脚本"
     echo "================================"
     
-    # 检查必要的命令
+    # 检查必要的命令和版本
     log_info "检查系统环境..."
     check_command "docker"
     check_command "docker-compose"
     check_command "node"
     check_command "npm"
+    
+    # 检查Node.js版本
+    local node_version=$(node -v | sed 's/v//')
+    local node_major=$(echo $node_version | cut -d. -f1)
+    if [ "$node_major" -lt 18 ]; then
+        log_error "Node.js 版本过低 ($node_version)，需要 >= 18.0.0"
+        exit 1
+    fi
+    log_info "Node.js 版本: $node_version ✓"
+    
+    # 检查npm版本
+    local npm_version=$(npm -v)
+    local npm_major=$(echo $npm_version | cut -d. -f1)
+    if [ "$npm_major" -lt 8 ]; then
+        log_error "npm 版本过低 ($npm_version)，需要 >= 8.0.0"
+        exit 1
+    fi
+    log_info "npm 版本: $npm_version ✓"
     
     # 检查必要文件
     log_info "检查项目文件..."
@@ -108,6 +126,39 @@ main() {
             exit 1
         fi
     fi
+    
+    # npm源配置
+    echo ""
+    echo "📦 npm源配置"
+    echo "================================"
+    echo "请选择npm源:"
+    echo "1) 国内源 (淘宝镜像) - 推荐国内用户"
+    echo "2) 官方源 (npmjs.org) - 推荐海外用户"
+    echo ""
+    
+    while true; do
+        read -p "请输入选择 [1-2]: " choice
+        case $choice in
+            1)
+                log_info "配置国内镜像源..."
+                npm config set registry https://registry.npmmirror.com/
+                log_success "已配置为国内镜像源"
+                break
+                ;;
+            2)
+                log_info "配置官方源..."
+                npm config set registry https://registry.npmjs.org/
+                log_success "已配置为官方源"
+                break
+                ;;
+            *)
+                echo "⚠️  请输入 1 或 2"
+                ;;
+        esac
+    done
+    
+    local current_registry=$(npm config get registry)
+    log_info "当前npm源: $current_registry"
     
     # 安装依赖
     log_info "安装Node.js依赖..."
@@ -156,10 +207,16 @@ main() {
     else
         log_warning "数据库迁移失败，尝试清理并重新创建..."
         
-        # 尝试删除数据库并重新创建
-        log_info "清理数据库..."
-        docker-compose exec -T postgres psql -U wuhr_admin -c "DROP DATABASE IF EXISTS wuhr_ai_ops;" 2>/dev/null || true
-        docker-compose exec -T postgres psql -U wuhr_admin -c "CREATE DATABASE wuhr_ai_ops;" 2>/dev/null || true
+        # 强制删除数据库并重新创建
+        log_info "强制清理数据库..."
+        docker-compose exec -T postgres psql -U wuhr_admin -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'wuhr_ai_ops';" 2>/dev/null || true
+        docker-compose exec -T postgres psql -U wuhr_admin -d postgres -c "DROP DATABASE IF EXISTS wuhr_ai_ops;" 2>/dev/null || true
+        docker-compose exec -T postgres psql -U wuhr_admin -d postgres -c "CREATE DATABASE wuhr_ai_ops;" 2>/dev/null || true
+        
+        # 清理Prisma迁移记录
+        log_info "清理迁移记录..."
+        find prisma/migrations -name "_*" -type d -exec rm -rf {} + 2>/dev/null || true
+        rm -rf lib/generated/prisma/ 2>/dev/null || true
         
         # 重新尝试迁移
         log_info "重新执行数据库迁移..."

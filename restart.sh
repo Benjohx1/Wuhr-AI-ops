@@ -62,49 +62,55 @@ start_service() {
         sleep 2
     fi
     
-    # 后台启动
-    nohup npm start > "$LOG_FILE" 2>&1 &
-    SERVICE_PID=$!
-    echo $SERVICE_PID > "$PID_FILE"
-    
-    sleep 3
-    
-    # 检查服务是否启动成功
-    if kill -0 $SERVICE_PID 2>/dev/null; then
-        log_success "🎉 服务启动成功！"
-        echo ""
-        echo "📋 服务信息:"
-        echo "  进程ID: $SERVICE_PID"
-        echo "  日志文件: $LOG_FILE"
-        echo ""
-        echo "🌐 访问地址:"
-        
-        # 获取IP地址
-        LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || ip route get 1 2>/dev/null | awk '{print $7; exit}' || echo "localhost")
-        PUBLIC_IP=$(curl -s --connect-timeout 3 ifconfig.me 2>/dev/null || echo "获取失败")
-        
-        echo "  本地访问: http://localhost:3000"
-        if [ "$LOCAL_IP" != "localhost" ]; then
-            echo "  内网访问: http://$LOCAL_IP:3000"
-        fi
-        if [ "$PUBLIC_IP" != "获取失败" ]; then
-            echo "  外网访问: http://$PUBLIC_IP:3000"
-        fi
-        echo ""
-        echo "👤 管理员账户:"
-        echo "  邮箱: admin@wuhr.ai"
-        echo "  密码: Admin123!"
-        echo ""
-        echo "📝 管理命令:"
-        echo "  查看日志: tail -f $LOG_FILE"
-        echo "  重启服务: ./restart.sh"
-        echo "  停止服务: ./restart.sh stop"
-        echo ""
+    # 根据参数决定启动方式
+    if [ "$1" = "--foreground" ]; then
+        log_info "前台启动模式"
+        npm start
     else
-        log_error "服务启动失败"
-        echo "请查看日志: cat $LOG_FILE"
-        rm -f "$PID_FILE"
-        exit 1
+        # 后台启动
+        nohup npm start > "$LOG_FILE" 2>&1 &
+        SERVICE_PID=$!
+        echo $SERVICE_PID > "$PID_FILE"
+        
+        sleep 3
+        
+        # 检查服务是否启动成功
+        if kill -0 $SERVICE_PID 2>/dev/null; then
+            log_success "🎉 服务启动成功！"
+            echo ""
+            echo "📋 服务信息:"
+            echo "  进程ID: $SERVICE_PID"
+            echo "  日志文件: $LOG_FILE"
+            echo ""
+            echo "🌐 访问地址:"
+            
+            # 获取IP地址
+            LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || ip route get 1 2>/dev/null | awk '{print $7; exit}' || echo "localhost")
+            PUBLIC_IP=$(curl -s --connect-timeout 3 ifconfig.me 2>/dev/null || echo "获取失败")
+            
+            echo "  本地访问: http://localhost:3000"
+            if [ "$LOCAL_IP" != "localhost" ]; then
+                echo "  内网访问: http://$LOCAL_IP:3000"
+            fi
+            if [ "$PUBLIC_IP" != "获取失败" ]; then
+                echo "  外网访问: http://$PUBLIC_IP:3000"
+            fi
+            echo ""
+            echo "👤 管理员账户:"
+            echo "  邮箱: admin@wuhr.ai"
+            echo "  密码: Admin123!"
+            echo ""
+            echo "📝 管理命令:"
+            echo "  查看日志: tail -f $LOG_FILE"
+            echo "  重启服务: ./restart.sh"
+            echo "  停止服务: ./restart.sh stop"
+            echo ""
+        else
+            log_error "服务启动失败"
+            echo "请查看日志: cat $LOG_FILE"
+            rm -f "$PID_FILE"
+            exit 1
+        fi
     fi
 }
 
@@ -116,6 +122,19 @@ echo ""
 if [ "$1" = "stop" ]; then
     stop_service
     log_success "服务已停止"
+    exit 0
+elif [ "$1" = "--foreground" ]; then
+    log_info "前台启动模式"
+elif [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    echo "🚀 Wuhr AI Ops 服务管理脚本"
+    echo "================================"
+    echo ""
+    echo "用法:"
+    echo "  ./restart.sh              # 后台启动服务"
+    echo "  ./restart.sh --foreground # 前台启动服务"
+    echo "  ./restart.sh stop         # 停止服务"
+    echo "  ./restart.sh --help       # 显示帮助信息"
+    echo ""
     exit 0
 fi
 
@@ -182,4 +201,4 @@ if [ ! -d ".next" ]; then
 fi
 
 # 启动服务
-start_service 
+start_service "$1" 

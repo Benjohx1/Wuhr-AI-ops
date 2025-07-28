@@ -27,10 +27,50 @@ log_error() {
     echo -e "${RED}[错误]${NC} $1"
 }
 
+# 系统检测函数
+detect_system() {
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS=$NAME
+        OS_VERSION=$VERSION_ID
+    elif type lsb_release >/dev/null 2>&1; then
+        OS=$(lsb_release -si)
+        OS_VERSION=$(lsb_release -sr)
+    elif [ -f /etc/redhat-release ]; then
+        OS=$(cat /etc/redhat-release | awk '{print $1}')
+        OS_VERSION=$(cat /etc/redhat-release | awk '{print $3}')
+    else
+        OS=$(uname -s)
+        OS_VERSION=$(uname -r)
+    fi
+    
+    log_info "检测到系统: $OS $OS_VERSION"
+    
+    # 设置systemd路径
+    if [[ "$OS" == *"Ubuntu"* ]] || [[ "$OS" == *"Debian"* ]] || \
+       [[ "$OS" == *"CentOS"* ]] || [[ "$OS" == *"Red Hat"* ]] || \
+       [[ "$OS" == *"Fedora"* ]] || [[ "$OS" == *"Rocky"* ]] || \
+       [[ "$OS" == *"AlmaLinux"* ]] || [[ "$OS" == *"SUSE"* ]] || \
+       [[ "$OS" == *"openSUSE"* ]] || [[ "$OS" == *"Arch"* ]]; then
+        SYSTEMD_PATH="/etc/systemd/system"
+    elif [[ "$OS" == *"Alpine"* ]]; then
+        log_error "Alpine Linux 使用 OpenRC，不支持 systemd"
+        exit 1
+    else
+        log_warning "未识别的系统，使用默认路径: /etc/systemd/system"
+        SYSTEMD_PATH="/etc/systemd/system"
+    fi
+    
+    log_info "Systemd 路径: $SYSTEMD_PATH"
+}
+
 SERVICE_NAME="wuhr-ai-ops"
 CURRENT_USER=$(whoami)
 
 log_info "开始卸载 Wuhr AI Ops systemd 服务..."
+
+# 检测系统
+detect_system
 
 # 检查是否为root用户
 if [ "$CURRENT_USER" != "root" ]; then
@@ -64,8 +104,8 @@ else
 fi
 
 # 删除服务文件
-SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-SERVICE_DIR="/etc/systemd/system/${SERVICE_NAME}.service.d"
+SERVICE_FILE="$SYSTEMD_PATH/${SERVICE_NAME}.service"
+SERVICE_DIR="$SYSTEMD_PATH/${SERVICE_NAME}.service.d"
 
 if [ -f "$SERVICE_FILE" ]; then
     rm -f "$SERVICE_FILE"

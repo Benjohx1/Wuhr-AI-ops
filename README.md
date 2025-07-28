@@ -140,6 +140,16 @@ npm start
 
 ## ⚙️ 系统服务管理
 
+### 系统兼容性
+
+**支持的系统**：
+- ✅ Ubuntu/Debian (使用 www-data 用户)
+- ✅ CentOS/RHEL/Rocky/AlmaLinux (使用 nginx 用户)
+- ✅ Fedora (使用 nginx 用户)
+- ✅ openSUSE/SUSE (使用 wwwrun 用户)
+- ✅ Arch Linux (使用 http 用户)
+- ❌ Alpine Linux (使用 OpenRC，不支持 systemd)
+
 ### Systemd 服务操作
 
 ```bash

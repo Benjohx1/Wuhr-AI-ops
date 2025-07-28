@@ -30,9 +30,169 @@ log_error() {
 
 # 检查命令是否存在
 check_command() {
-    if ! command -v "$1" &> /dev/null; then
-        log_error "$1 未安装，请先安装后再运行此脚本"
-        exit 1
+    command -v "$1" &> /dev/null
+}
+
+# 安装Docker
+install_docker() {
+    echo ""
+    log_info "开始安装Docker..."
+    
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        # Linux系统
+        log_info "检测到Linux系统，安装Docker..."
+        curl -fsSL https://get.docker.com -o get-docker.sh
+        sudo sh get-docker.sh
+        sudo usermod -aG docker $USER
+        rm get-docker.sh
+        
+        # 安装Docker Compose
+        log_info "安装Docker Compose..."
+        sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        sudo chmod +x /usr/local/bin/docker-compose
+        
+        log_success "Docker和Docker Compose安装完成"
+        log_warning "请重新登录或运行 'newgrp docker' 后再次运行此脚本"
+        
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS系统
+        log_info "检测到macOS系统"
+        if command -v brew &> /dev/null; then
+            log_info "使用Homebrew安装Docker Desktop..."
+            brew install --cask docker
+            log_success "Docker Desktop安装完成，请启动Docker Desktop应用"
+        else
+            log_warning "未检测到Homebrew，请手动安装："
+            echo "1. 访问 https://docs.docker.com/desktop/mac/install/"
+            echo "2. 下载并安装Docker Desktop for Mac"
+            echo "3. 启动Docker Desktop应用"
+        fi
+        
+    else
+        log_warning "不支持自动安装，请手动安装："
+        echo "1. 访问 https://docs.docker.com/get-docker/"
+        echo "2. 下载适合您系统的Docker"
+        echo "3. 安装Docker和Docker Compose"
+    fi
+}
+
+# 安装Node.js和npm
+install_nodejs() {
+    echo ""
+    log_info "开始安装Node.js..."
+    
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        # Linux系统 - 检测发行版
+        if command -v apt-get &> /dev/null; then
+            # Ubuntu/Debian系统
+            log_info "检测到Ubuntu/Debian系统，安装Node.js 20.x..."
+            curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+        elif command -v yum &> /dev/null; then
+            # CentOS/RHEL系统
+            log_info "检测到CentOS/RHEL系统，安装Node.js 20.x..."
+            curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+            sudo yum install -y nodejs
+        elif command -v dnf &> /dev/null; then
+            # Fedora系统
+            log_info "检测到Fedora系统，安装Node.js 20.x..."
+            curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+            sudo dnf install -y nodejs
+        else
+            log_warning "未识别的Linux发行版，请手动安装Node.js"
+        fi
+        
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS系统
+        log_info "检测到macOS系统"
+        if command -v brew &> /dev/null; then
+            log_info "使用Homebrew安装Node.js..."
+            brew install node@20
+            brew link node@20
+        else
+            log_warning "未检测到Homebrew，请手动安装："
+            echo "1. 访问 https://nodejs.org/en/download/"
+            echo "2. 下载Node.js 20.x LTS版本"
+            echo "3. 安装Node.js（包含npm）"
+        fi
+        
+    else
+        log_warning "不支持自动安装，请手动安装："
+        echo "1. 访问 https://nodejs.org/en/download/"
+        echo "2. 下载Node.js 20.x LTS版本"
+        echo "3. 安装Node.js（包含npm）"
+    fi
+}
+
+# 环境检查和安装选择
+check_and_install_environment() {
+    local missing_tools=()
+    
+    # 检查Docker
+    if ! check_command "docker"; then
+        missing_tools+=("Docker")
+    fi
+    
+    # 检查Docker Compose
+    if ! check_command "docker-compose"; then
+        missing_tools+=("Docker Compose")
+    fi
+    
+    # 检查Node.js
+    if ! check_command "node"; then
+        missing_tools+=("Node.js")
+    fi
+    
+    # 检查npm
+    if ! check_command "npm"; then
+        missing_tools+=("npm")
+    fi
+    
+    # 如果有缺失的工具，询问用户是否安装
+    if [ ${#missing_tools[@]} -gt 0 ]; then
+        echo ""
+        echo "⚠️  检测到以下工具未安装："
+        for tool in "${missing_tools[@]}"; do
+            echo "   - $tool"
+        done
+        echo ""
+        
+        while true; do
+            read -p "是否自动安装缺失的环境？[y/N]: " install_choice
+            case $install_choice in
+                [Yy]*)
+                    # 安装Docker和Docker Compose
+                    if [[ " ${missing_tools[@]} " =~ " Docker " ]] || [[ " ${missing_tools[@]} " =~ " Docker Compose " ]]; then
+                        install_docker
+                    fi
+                    
+                    # 安装Node.js和npm
+                    if [[ " ${missing_tools[@]} " =~ " Node.js " ]] || [[ " ${missing_tools[@]} " =~ " npm " ]]; then
+                        install_nodejs
+                    fi
+                    
+                    echo ""
+                    log_success "🎉 环境安装完成！"
+                    echo ""
+                    echo "📝 下一步操作："
+                    echo "1. 如果安装了Docker，请确保Docker服务已启动"
+                    echo "2. 重新运行此脚本：./start.sh"
+                    echo ""
+                    exit 0
+                    ;;
+                [Nn]*|"")
+                    log_error "请手动安装缺失的环境后再运行此脚本"
+                    echo ""
+                    echo "安装指南："
+                    echo "1. Docker: https://docs.docker.com/get-docker/"
+                    echo "2. Node.js: https://nodejs.org/en/download/"
+                    exit 1
+                    ;;
+                *)
+                    echo "⚠️  请输入 y 或 n"
+                    ;;
+            esac
+        done
     fi
 }
 
@@ -83,13 +243,27 @@ wait_for_service() {
 main() {
     echo "🚀 Wuhr AI Ops 一键启动脚本"
     echo "================================"
+    echo "📋 系统要求："
+    echo "   - Docker >= 20.10.0"
+    echo "   - Docker Compose >= 2.0.0"
+    echo "   - Node.js >= 18.0.0"
+    echo "   - npm >= 8.0.0"
+    echo ""
     
-    # 检查必要的命令和版本
+    # 检查并安装环境
     log_info "检查系统环境..."
-    check_command "docker"
-    check_command "docker-compose"
-    check_command "node"
-    check_command "npm"
+    check_and_install_environment
+    
+    # 验证环境版本
+    log_info "验证环境版本..."
+    
+    # 检查Docker版本
+    local docker_version=$(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    log_info "Docker 版本: $docker_version ✓"
+    
+    # 检查Docker Compose版本
+    local compose_version=$(docker-compose --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    log_info "Docker Compose 版本: $compose_version ✓"
     
     # 检查Node.js版本
     local node_version=$(node -v | sed 's/v//')
@@ -162,7 +336,7 @@ main() {
     
     # 安装依赖
     log_info "安装Node.js依赖..."
-    if npm install; then
+    if npm install >/dev/null 2>&1; then
         log_success "依赖安装完成"
     else
         log_error "依赖安装失败"
@@ -171,7 +345,7 @@ main() {
     
     # 启动Docker服务
     log_info "启动Docker服务..."
-    if docker-compose up -d; then
+    if docker-compose up -d >/dev/null 2>&1; then
         log_success "Docker服务启动完成"
     else
         log_error "Docker服务启动失败"
@@ -202,7 +376,7 @@ main() {
     
     # 初始化数据库
     log_info "初始化数据库..."
-    if npx prisma db push --force-reset; then
+    if npx prisma db push --force-reset >/dev/null 2>&1; then
         log_success "数据库初始化完成"
     else
         log_error "数据库初始化失败"
@@ -211,7 +385,7 @@ main() {
     
     # 生成Prisma客户端
     log_info "生成数据库客户端..."
-    if npx prisma generate; then
+    if npx prisma generate >/dev/null 2>&1; then
         log_success "数据库客户端生成完成"
     else
         log_error "数据库客户端生成失败"
@@ -229,29 +403,31 @@ main() {
     # 初始化权限系统
     log_info "初始化权限系统..."
     if [ -f "scripts/init-permissions.js" ]; then
-        node scripts/init-permissions.js 2>/dev/null || log_warning "权限初始化跳过"
+        node scripts/init-permissions.js >/dev/null 2>&1 || log_warning "权限初始化跳过"
+        log_success "权限系统初始化完成"
     fi
     
     # 启动应用
     log_info "构建应用..."
-    if npm run build; then
+    BUILD_SUCCESS=false
+    
+    if npm run build >/dev/null 2>&1; then
         log_success "应用构建完成"
+        BUILD_SUCCESS=true
     else
-        log_warning "应用构建失败，尝试开发模式..."
-        npm run dev > app.log 2>&1 &
-        DEV_PID=$!
-        log_info "使用开发模式启动"
-        sleep 5
+        log_warning "应用构建失败，使用开发模式..."
+        BUILD_SUCCESS=false
     fi
     
-    # 后台启动应用（如果构建成功）
-    if [ -d ".next" ] && [ -f ".next/BUILD_ID" ]; then
+    # 根据构建结果启动对应模式
+    if [ "$BUILD_SUCCESS" = true ]; then
         log_info "启动生产服务器..."
         nohup npm start > app.log 2>&1 &
         APP_PID=$!
     else
-        log_info "应用已在开发模式运行"
-        APP_PID=${DEV_PID:-$(pgrep -f "npm run dev" | head -1)}
+        log_info "启动开发服务器..."
+        npm run dev > app.log 2>&1 &
+        APP_PID=$!
     fi
     
     # 等待应用启动
@@ -269,12 +445,12 @@ main() {
     echo "   密码: Admin123!"
     echo ""
     echo "📝 日志文件: app.log"
-    echo "🔄 停止服务: docker-compose down && kill $APP_PID"
+    echo "🔄 停止服务: docker-compose down"
     echo ""
     echo "💡 提示："
     echo "- 首次启动可能需要等待几分钟"
     echo "- 如果无法访问，请检查端口3000是否被占用"
-    echo "- AI功能需要配置OpenAI API密钥"
+    echo "- AI功能需要配置AI模型API密钥"
     echo ""
     echo "如遇问题，请查看："
     echo "- 应用日志: tail -f app.log"

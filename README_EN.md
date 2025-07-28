@@ -100,6 +100,8 @@ cd Wuhr-AI-ops
 ./start.sh
 ```
 
+> **🔧 Smart Environment Detection**: The script automatically detects system environment and asks if you want to auto-install missing components like Docker, Node.js, etc.
+
 ### Manual Deployment
 
 ```bash

@@ -366,7 +366,7 @@ async function verifyPermissions() {
     const usersWithPermissions = await prisma.user.findMany({
       where: {
         permissions: {
-          not: []
+          isEmpty: false
         }
       },
       select: {

@@ -200,19 +200,39 @@ node --version
 npm --version
 ```
 
-### 4. 启动数据库服务
+### 4. 配置环境变量
+```bash
+# 复制环境变量模板
+cp .env.example .env
+
+# 编辑环境变量（根据需要修改）
+nano .env
+```
+
+### 5. 配置npm镜像源（国内用户）
+```bash
+# 配置国内npm镜像源
+npm config set registry https://registry.npmmirror.com/
+npm config set disturl https://npmmirror.com/dist
+```
+
+### 6. 下载kubelet-wuhrai工具
+```bash
+# 下载AI功能所需的工具
+wget -O kubelet-wuhrai https://wuhrai-wordpress.oss-cn-hangzhou.aliyuncs.com/kubelet-wuhrai
+chmod +x kubelet-wuhrai
+```
+
+### 7. 启动数据库服务
 ```bash
 # 启动Docker容器
 docker-compose up -d postgres redis pgadmin
 
 # 等待服务启动
 sleep 30
-
-# 检查服务状态
-docker-compose ps
 ```
 
-### 5. 安装项目依赖
+### 8. 安装项目依赖
 ```bash
 # 安装npm依赖
 npm install
@@ -221,7 +241,7 @@ npm install
 npm cache clean --force
 ```
 
-### 6. 数据库初始化
+### 9. 数据库初始化
 ```bash
 # 重置数据库架构
 npx prisma migrate reset --force
@@ -233,7 +253,7 @@ npx prisma generate
 npx prisma db push
 ```
 
-### 7. 初始化用户和权限
+### 10. 初始化用户和权限
 ```bash
 # 创建管理员用户
 node scripts/ensure-admin-user.js
@@ -245,13 +265,19 @@ node scripts/init-permissions.js
 node scripts/init-super-admin.ts
 ```
 
-### 8. 初始化预设模型
+### 11. 初始化预设模型
 ```bash
 # 初始化预设模型数据
 node scripts/init-preset-models.js
 ```
 
-### 9. 构建和启动应用
+### 12. 初始化ELK模板
+```bash
+# 初始化ELK监控模板
+node scripts/init-elk-templates.js
+```
+
+### 13. 构建和启动应用
 ```bash
 # 构建应用
 npm run build
@@ -263,7 +289,7 @@ npm start
 npm run dev
 ```
 
-### 10. 验证部署
+### 14. 验证部署
 ```bash
 # 检查应用状态
 curl http://localhost:3000

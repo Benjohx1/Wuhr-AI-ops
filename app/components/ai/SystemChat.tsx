@@ -204,6 +204,9 @@ const SystemChat: React.FC = () => {
   const [servers, setServers] = useState<any[]>([])
   const [loadingServers, setLoadingServers] = useState(false)
 
+  // kubelet-wuhrai检查状态
+  const [kubeletCheckLoading, setKubeletCheckLoading] = useState(false)
+
   const textAreaRef = useRef<any>(null)
 
   // 获取服务器列表
@@ -266,7 +269,7 @@ const SystemChat: React.FC = () => {
       if (e.ctrlKey && e.key === 'l') {
         e.preventDefault()
         setIsK8sMode(false)
-        message.info('已切换到Linux系统模式')
+        message.info('已切换到Linux模式')
       }
     }
 
@@ -335,6 +338,7 @@ const SystemChat: React.FC = () => {
   const checkKubeletWuhrai = async (serverId: string) => {
     if (!serverId) return
 
+    setKubeletCheckLoading(true)
     try {
       const response = await fetch(`/api/servers/${serverId}/check-kubelet-wuhrai`, {
         credentials: 'include', // 包含认证cookie
@@ -376,20 +380,20 @@ const SystemChat: React.FC = () => {
               </div>
 
               {recommendations.map((rec: any, index: number) => (
-                <div key={index} className={`p-2 rounded ${
-                  rec.type === 'success' ? 'bg-green-50 text-green-700' :
-                  rec.type === 'warning' ? 'bg-yellow-50 text-yellow-700' :
-                  rec.type === 'error' ? 'bg-red-50 text-red-700' :
-                  'bg-blue-50 text-blue-700'
+                <div key={index} className={`p-2 rounded border ${
+                  rec.type === 'success' ? 'bg-transparent text-blue-400 border-blue-500/30' :
+                  rec.type === 'warning' ? 'bg-transparent text-yellow-400 border-yellow-500/30' :
+                  rec.type === 'error' ? 'bg-transparent text-red-400 border-red-500/30' :
+                  'bg-transparent text-blue-400 border-blue-500/30'
                 }`}>
                   {rec.message}
                 </div>
               ))}
 
               {kubeletStatus === 'not_installed' && (
-                <div className="mt-4 p-3 bg-gray-50 rounded">
-                  <strong>安装说明：</strong>
-                  <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
+                <div className="mt-4 p-3 bg-transparent border border-gray-500/30 rounded">
+                  <strong className="text-gray-300">安装说明：</strong>
+                  <div className="mt-1 p-2 bg-transparent border border-gray-600/30 rounded text-sm text-gray-400">
                     请参考kubelet-wuhrai官方文档进行安装
                   </div>
                 </div>
@@ -421,14 +425,16 @@ const SystemChat: React.FC = () => {
               <li>认证问题</li>
               <li>网络连接问题</li>
             </ul>
-            <div className="mt-4 p-3 bg-red-50 rounded text-red-800">
+            <div className="mt-4 p-3 bg-transparent border border-red-500/30 rounded text-red-400">
               <p><strong>错误详情：</strong></p>
-              <code>{error instanceof Error ? error.message : String(error)}</code>
+              <code className="text-red-300">{error instanceof Error ? error.message : String(error)}</code>
             </div>
           </div>
         ),
         width: 500
       })
+    } finally {
+      setKubeletCheckLoading(false)
     }
   }
 
@@ -518,61 +524,84 @@ const SystemChat: React.FC = () => {
     return sessions
   }
 
-  // 快捷命令 - Kubernetes + Linux系统运维常用命令
+  // 快捷命令 - 前四个：Linux系统运维命令，后四个：K8s集群运维命令
   const quickCommands = [
-    // Kubernetes相关命令
-    {
-      label: '集群状态检查',
-      command: '检查Kubernetes集群状态，包括节点和组件健康状况',
-      icon: <ApiOutlined />,
-      description: '全面检查K8s集群节点和核心组件状态',
-    },
-    {
-      label: 'Pod状态监控',
-      command: '查看所有命名空间的Pod运行状态和资源使用情况',
-      icon: <ThunderboltOutlined />,
-      description: '监控集群中所有Pod的运行状态',
-    },
-    {
-      label: '服务网络诊断',
-      command: '诊断Kubernetes服务网络连接和DNS解析问题',
-      icon: <GlobalOutlined />,
-      description: '排查K8s服务间网络连接问题',
-    },
-    {
-      label: '资源配额分析',
-      command: '分析集群资源配额使用情况和容量规划建议',
-      icon: <FileTextOutlined />,
-      description: '查看集群资源使用率和优化建议',
-    },
-    // Linux系统运维命令
+    // Linux系统运维命令（前四个）
     {
       label: '系统性能监控',
       command: '监控系统CPU、内存、磁盘IO和网络性能指标',
       icon: <MonitorOutlined />,
       description: '实时监控系统关键性能指标',
+      category: 'system'
     },
     {
       label: '进程资源分析',
       command: '分析系统进程资源占用，找出高CPU和内存消耗进程',
       icon: <DesktopOutlined />,
       description: '识别和管理资源消耗较高的进程',
+      category: 'system'
     },
     {
       label: '存储空间管理',
-      command: '检查磁盘空间使用情况，清理大文件和日志',
+      command: '检查磁盘空间使用情况，列出大文件和日志',
       icon: <DatabaseOutlined />,
-      description: '管理磁盘空间，清理不必要文件',
+      description: '管理磁盘空间，列出大文件',
+      category: 'system'
     },
     {
       label: '网络连接诊断',
       command: '诊断网络连接问题，检查端口监听和防火墙状态',
       icon: <BulbOutlined />,
       description: '排查网络连接和端口访问问题',
+      category: 'system'
+    },
+    // K8s集群运维命令（后四个）
+    {
+      label: '集群状态检查',
+      command: '检查Kubernetes集群状态，包括节点和组件健康状况',
+      icon: <ApiOutlined />,
+      description: '全面检查K8s集群节点和核心组件状态',
+      category: 'k8s'
+    },
+    {
+      label: '系统状态监控',
+      command: '查看所有命名空间的Pod运行状态和资源使用情况',
+      icon: <ThunderboltOutlined />,
+      description: '监控集群中所有Pod的运行状态',
+      category: 'k8s'
+    },
+    {
+      label: '服务网络诊断',
+      command: '诊断Kubernetes服务网络连接和DNS解析问题',
+      icon: <GlobalOutlined />,
+      description: '排查K8s服务间网络连接问题',
+      category: 'k8s'
+    },
+    {
+      label: '资源配额分析',
+      command: '分析集群资源配额使用情况和容量规划建议',
+      icon: <FileTextOutlined />,
+      description: '查看集群资源使用率和优化建议',
+      category: 'k8s'
     },
   ]
 
-
+  // 动态生成命令显示名称
+  const getCommandDisplayName = (cmd: any, index: number) => {
+    if (isK8sMode) {
+      // K8s模式：所有命令前添加"集群"前缀
+      if (cmd.label.startsWith('集群') || cmd.label.startsWith('系统')) {
+        return cmd.label.replace(/^(集群|系统)/, '集群')
+      }
+      return `集群${cmd.label}`
+    } else {
+      // Linux模式：所有命令前添加"系统"前缀
+      if (cmd.label.startsWith('集群') || cmd.label.startsWith('系统')) {
+        return cmd.label.replace(/^(集群|系统)/, '系统')
+      }
+      return `系统${cmd.label}`
+    }
+  }
 
   // 发送消息处理
   const handleSendMessage = async () => {
@@ -695,8 +724,95 @@ const SystemChat: React.FC = () => {
 
 
 
-  const handleQuickCommand = (command: string) => {
-    setInputValue(command)
+  // 根据当前模式生成正确的tooltip描述
+  const getTooltipDescription = (cmd: any) => {
+    // 如果是K8s模式
+    if (isK8sMode) {
+      // 如果命令本身就是K8s类别，直接使用原描述
+      if (cmd.category === 'k8s') {
+        return cmd.description
+      }
+      // 如果是system类别的命令，转换为K8s相关描述
+      switch (cmd.label) {
+        case '系统性能监控':
+          return '实时监控K8s集群节点关键性能指标'
+        case '进程资源分析':
+          return '识别和管理集群中资源列出消耗较高的Pod'
+        case '存储空间管理':
+          return '管理K8s集群存储资源，列出不必要的PV/PVC'
+        case '网络连接诊断':
+          return '排查K8s集群网络连接和Service访问问题'
+        default:
+          return cmd.description
+      }
+    } else {
+      // 如果是Linux模式
+      // 如果命令本身就是system类别，直接使用原描述
+      if (cmd.category === 'system') {
+        return cmd.description
+      }
+      // 如果是k8s类别的命令，转换为Linux系统相关描述
+      switch (cmd.label) {
+        case '集群状态检查':
+          return '全面检查Linux系统状态和核心服务健康度'
+        case '系统状态监控':
+          return '监控系统中所有进程和服务的运行状态'
+        case '服务网络诊断':
+          return '排查Linux系统网络连接和服务访问问题'
+        case '资源配额分析':
+          return '查看系统资源使用率和性能优化建议'
+        default:
+          return cmd.description
+      }
+    }
+  }
+
+  // 根据当前模式和命令类别生成正确的命令描述
+  const getCommandDescription = (cmd: any) => {
+    // 如果是K8s模式
+    if (isK8sMode) {
+      // 如果命令本身就是K8s类别，直接使用原描述
+      if (cmd.category === 'k8s') {
+        return cmd.command
+      }
+      // 如果是system类别的命令，转换为K8s相关描述
+      switch (cmd.label) {
+        case '系统性能监控':
+          return '监控Kubernetes集群节点CPU、内存、磁盘IO和网络性能指标'
+        case '进程资源分析':
+          return '分析Kubernetes集群中Pod和容器资源占用情况'
+        case '存储空间管理':
+          return '检查Kubernetes集群存储卷使用情况和PV/PVC状态'
+        case '网络连接诊断':
+          return '诊断Kubernetes集群网络连接问题，检查Service和Ingress状态'
+        default:
+          return cmd.command
+      }
+    } else {
+      // 如果是Linux模式
+      // 如果命令本身就是system类别，直接使用原描述
+      if (cmd.category === 'system') {
+        return cmd.command
+      }
+      // 如果是k8s类别的命令，转换为Linux系统相关描述
+      switch (cmd.label) {
+        case '集群状态检查':
+          return '检查Linux系统状态，包括服务运行状况和系统健康度'
+        case '系统状态监控':
+          return '查看系统进程状态和服务运行情况'
+        case '服务网络诊断':
+          return '诊断Linux系统网络连接和DNS解析问题'
+        case '资源配额分析':
+          return '分析系统资源使用情况和性能优化建议'
+        default:
+          return cmd.command
+      }
+    }
+  }
+
+  const handleQuickCommand = (cmd: any) => {
+    const commandDescription = getCommandDescription(cmd)
+    setInputValue(commandDescription)
     textAreaRef.current?.focus()
   }
 
@@ -856,17 +972,23 @@ const SystemChat: React.FC = () => {
                   {/* 快捷命令 */}
                   <div className="mt-8">
                     <Text className="text-gray-300 block mb-4">运维常用命令：</Text>
+
+                    {/* 动态显示所有命令，根据模式添加前缀 */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 max-w-4xl mx-auto">
                       {quickCommands.map((cmd, index) => (
-                        <Tooltip key={index} title={cmd.description}>
+                        <Tooltip key={index} title={getTooltipDescription(cmd)}>
                           <Button
                             block
-                            onClick={() => handleQuickCommand(cmd.command)}
-                            className="text-left h-auto py-3"
+                            onClick={() => handleQuickCommand(cmd)}
+                            className={`text-left h-auto py-3 ${
+                              isK8sMode
+                                ? 'border-blue-500/30 hover:border-blue-400'
+                                : 'border-green-500/30 hover:border-green-400'
+                            }`}
                           >
                             <div className="flex items-center space-x-2">
                               {cmd.icon}
-                              <span className="text-sm">{cmd.label}</span>
+                              <span className="text-sm">{getCommandDisplayName(cmd, index)}</span>
                             </div>
                           </Button>
                         </Tooltip>
@@ -975,25 +1097,15 @@ const SystemChat: React.FC = () => {
                     <Button
                       icon={isK8sMode ? <GlobalOutlined /> : <DesktopOutlined />}
                       onClick={() => setIsK8sMode(!isK8sMode)}
-                      type={isK8sMode ? 'primary' : 'default'}
+                      type="default"
+                      className="border-blue-600 hover:border-blue-700"
                       style={{
-                        backgroundColor: isK8sMode ? '#1890ff' : '#52c41a',
-                        borderColor: isK8sMode ? '#1890ff' : '#52c41a',
-                        color: '#fff'
+                        backgroundColor: 'transparent',
+                        color: isK8sMode ? '#1890ff' : '#52c41a',
+                        fontWeight: '500'
                       }}
                     >
-                      {isK8sMode ? 'K8s' : 'Linux'}
-                      <Badge 
-                        count="AI" 
-                        size="small" 
-                        style={{ 
-                          backgroundColor: '#722ed1',
-                          fontSize: '10px',
-                          height: '16px',
-                          lineHeight: '16px',
-                          minWidth: '20px'
-                        }} 
-                      />
+                      {isK8sMode ? 'K8s模式' : 'Linux模式'}
                     </Button>
                   </Tooltip>
 
@@ -1109,7 +1221,7 @@ const SystemChat: React.FC = () => {
 
                   {/* 远程主机配置 */}
                   {hostConfig.executionMode === 'remote' && (
-                    <div className="space-y-3 p-3 bg-gray-800/50 rounded-lg">
+                    <div className="space-y-3 p-3 rounded-lg">
                       <Text className="text-gray-300 block">选择远程主机</Text>
 
                       <div>
@@ -1176,19 +1288,21 @@ const SystemChat: React.FC = () => {
 
                           {/* kubelet-wuhrai状态检查 */}
                           {hostConfig.connectionStatus === 'connected' && (
-                            <div className="p-3 bg-gray-700/50 rounded-lg">
+                            <div className="p-3 bg-transparent rounded-lg border border-gray-600/30">
                               <div className="flex items-center justify-between mb-2">
-                                <Text className="text-gray-300 text-sm">kubelet-wuhrai状态</Text>
+                                <Text className="text-gray-200 text-sm">远程主机kubelet-wuhrai状态</Text>
                                 <Button
-                                  type="link"
+                                  type="primary"
                                   size="small"
+                                  loading={kubeletCheckLoading}
                                   onClick={() => checkKubeletWuhrai(hostConfig.selectedServerId)}
-                                  className="text-blue-400 hover:text-blue-300 p-0"
+                                  className="bg-blue-600 hover:bg-blue-700 border-blue-600"
+                                  disabled={kubeletCheckLoading}
                                 >
-                                  检查状态
+                                  {kubeletCheckLoading ? '正在检查...' : '检查状态'}
                                 </Button>
                               </div>
-                              <div className="text-xs text-gray-400">
+                              <div className="text-xs text-gray-300">
                                 远程主机需要安装kubelet-wuhrai才能使用AI聊天功能
                               </div>
                             </div>
@@ -1269,7 +1383,7 @@ const SystemChat: React.FC = () => {
 
                   {/* 当前配置状态 */}
                   {currentModelConfig && (
-                    <div className="mt-4 p-3 bg-gray-800/50 rounded border border-gray-600">
+                    <div className="mt-4 p-3 rounded border border-gray-600">
                       <div className="flex items-center justify-between mb-2">
                         <Text className="text-gray-300 text-sm">当前配置</Text>
                         <Badge

@@ -10,7 +10,7 @@ async function initSuperAdmin() {
     console.log('🚀 开始初始化超级管理员...')
 
     const superAdminEmail = 'admin@wuhr.ai'
-    const superAdminPassword = '123456' // 默认密码，建议首次登录后修改
+    const superAdminPassword = 'Admin123!' // 超级管理员密码
 
     // 检查是否已存在超级管理员
     const existingAdmin = await prisma.user.findUnique({

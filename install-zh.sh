@@ -32,7 +32,7 @@ NODE_MIRROR="https://npmmirror.com/mirrors/node"
 KUBELET_DOWNLOAD_URLS=(
     "https://wuhrai-wordpress.oss-cn-hangzhou.aliyuncs.com/kubelet-wuhrai"
     "https://gitee.com/st-lzh/kubelet-wuhrai/releases/latest/download/kubelet-wuhrai"
-    "https://github.com/st-lzh/kubelet-wuhrai/releases/latest/download/kubelet-wuhrai"
+    "https://github.com/st-lzh/kubelet-wuhrai/releases/download/v1.0.0/kubelet-wuhrai"
 )
 
 # 日志函数

@@ -25,7 +25,7 @@ LOG_FILE="$PROJECT_DIR/install.log"
 NPM_REGISTRY="https://registry.npmjs.org"
 NODE_SOURCE="https://deb.nodesource.com"
 KUBELET_DOWNLOAD_URLS=(
-    "https://github.com/st-lzh/kubelet-wuhrai/releases/latest/download/kubelet-wuhrai"
+    "https://github.com/st-lzh/kubelet-wuhrai/releases/download/v1.0.0/kubelet-wuhrai"
 )
 
 # Logging functions

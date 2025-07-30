@@ -106,7 +106,7 @@ const Dashboard: React.FC = () => {
       title: 'CI/CD 流水线',
       description: '管理持续集成和部署流水线',
       icon: <RocketOutlined className="text-2xl text-orange-500" />,
-      href: '/cicd',
+      href: '/cicd/jenkins-deployments',
       color: 'orange',
       available: true,
     },
@@ -222,7 +222,7 @@ const Dashboard: React.FC = () => {
                   <Link href={action.href}>
                     <Card
                       hoverable
-                      className="text-center bg-gray-800/50 border-gray-600 hover:border-blue-500 transition-all duration-300 group"
+                      className="text-center bg-transparent border-gray-600 hover:border-blue-500 transition-all duration-300 group"
                       styles={{ body: { padding: '20px 16px' } }}
                     >
                       <div className="space-y-3">

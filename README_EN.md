@@ -295,7 +295,7 @@ POST /api/servers
 }
 ```
 
-For more API documentation, see: [API Documentation](./docs/API.md)
+For more API documentation, please refer to the API route implementations in the project source code
 
 ## 🤝 Contributing
 

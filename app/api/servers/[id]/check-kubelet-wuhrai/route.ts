@@ -5,81 +5,162 @@ import { executeSSHCommand } from '../../../../../lib/ssh/client'
 import * as fs from 'fs'
 import * as path from 'path'
 
-// 自动部署kubelet-wuhrai到远程主机
-async function deployKubeletWuhrai(sshConfig: any): Promise<{
+// 智能网络检测函数
+async function detectNetworkEnvironment(sshConfig: any): Promise<{
+  isOverseas: boolean
+  networkType: 'domestic' | 'overseas' | 'unknown'
+}> {
+  try {
+    console.log('🌐 开始检测网络环境...')
+
+    // 执行ping google.com命令检测网络环境
+    const pingResult = await executeSSHCommand(sshConfig, 'ping -c 3 google.com')
+
+    if (pingResult.success && pingResult.code === 0) {
+      console.log('✅ 检测到国外网络环境（可访问Google）')
+      return {
+        isOverseas: true,
+        networkType: 'overseas'
+      }
+    } else {
+      console.log('🏠 检测到国内网络环境（无法访问Google）')
+      return {
+        isOverseas: false,
+        networkType: 'domestic'
+      }
+    }
+  } catch (error) {
+    console.log('⚠️ 网络检测失败，默认使用国内环境')
+    return {
+      isOverseas: false,
+      networkType: 'unknown'
+    }
+  }
+}
+
+// 自动下载并安装kubelet-wuhrai到远程主机
+async function downloadAndInstallKubeletWuhrai(sshConfig: any): Promise<{
   success: boolean
   error?: string
   version?: string
+  method?: string
+  networkType?: string
 }> {
   try {
-    console.log('🚀 开始自动部署kubelet-wuhrai...')
+    console.log('🚀 开始自动下载并安装kubelet-wuhrai...')
 
-    // 检查本地kubelet-wuhrai文件是否存在
-    const localKubeletPath = path.join(process.cwd(), 'kubelet-wuhrai')
-    
-    if (!fs.existsSync(localKubeletPath)) {
-      console.log('❌ 本地kubelet-wuhrai文件不存在')
-      return {
-        success: false,
-        error: '本地kubelet-wuhrai文件不存在，无法自动部署'
-      }
-    }
+    // 首先检测网络环境
+    const networkInfo = await detectNetworkEnvironment(sshConfig)
+    console.log(`🌐 网络环境检测结果: ${networkInfo.networkType}`)
 
-    console.log('✅ 找到本地kubelet-wuhrai文件')
+    let downloadResult: any
+    let installMethod: string
 
-    // 读取本地文件
-    const kubeletContent = fs.readFileSync(localKubeletPath)
-    const kubeletBase64 = kubeletContent.toString('base64')
+    if (networkInfo.isOverseas) {
+      // 国外网络环境，使用GitHub安装
+      console.log('📥 使用GitHub源安装kubelet-wuhrai...')
+      const githubDownloadCommand = `
+        # GitHub安装命令
+        curl -fsSL -o /tmp/kubelet-wuhrai https://github.com/st-lzh/kubelet-wuhrai/releases/download/v1.0.0/kubelet-wuhrai && \
+        chmod +x /tmp/kubelet-wuhrai && \
+        sudo mv /tmp/kubelet-wuhrai /usr/local/bin/kubelet-wuhrai && \
+        echo "GitHub installation completed" && \
+        kubelet-wuhrai --version 2>/dev/null || echo "version_check_failed"
+      `
 
-    console.log('📤 开始传输文件到远程主机...')
+      downloadResult = await executeSSHCommand(sshConfig, githubDownloadCommand)
+      installMethod = 'github'
 
-    // 创建远程临时文件
-    const remoteCommand = `
-      echo "${kubeletBase64}" | base64 -d > /tmp/kubelet-wuhrai && \
-      chmod +x /tmp/kubelet-wuhrai && \
-      sudo mv /tmp/kubelet-wuhrai /usr/local/bin/kubelet-wuhrai && \
-      echo "Deployment completed"
-    `
-
-    const deployResult = await executeSSHCommand(sshConfig, remoteCommand)
-
-    if (!deployResult.success) {
-      console.log('❌ 部署命令执行失败:', deployResult.stderr)
-      return {
-        success: false,
-        error: `部署失败: ${deployResult.stderr || '未知错误'}`
-      }
-    }
-
-    console.log('📋 验证部署结果...')
-
-    // 验证部署是否成功
-    const verifyResult = await executeSSHCommand(sshConfig, 'which kubelet-wuhrai && kubelet-wuhrai --version')
-    
-    if (verifyResult.success && verifyResult.stdout.includes('kubelet-wuhrai')) {
-      console.log('✅ kubelet-wuhrai部署验证成功')
-      
-      // 提取版本信息
-      const versionMatch = verifyResult.stdout.match(/version[:\s]+([^\n\r]+)/i)
-      const version = versionMatch ? versionMatch[1].trim() : 'unknown'
-
-      return {
-        success: true,
-        version: version
+      if (downloadResult.success && downloadResult.stdout.includes('GitHub installation completed')) {
+        console.log('✅ GitHub安装成功')
+        const versionMatch = downloadResult.stdout.match(/kubelet-wuhrai version (\S+)/)
+        return {
+          success: true,
+          version: versionMatch ? versionMatch[1] : 'unknown',
+          method: installMethod,
+          networkType: networkInfo.networkType
+        }
       }
     } else {
-      console.log('❌ 部署验证失败')
-      return {
-        success: false,
-        error: '部署完成但验证失败，可能需要手动配置环境变量'
+      // 国内网络环境，使用国内下载源
+      console.log('📥 使用国内源下载kubelet-wuhrai...')
+      const domesticDownloadCommand = `
+        # 国内下载命令
+        curl -fsSL -o /tmp/kubelet-wuhrai https://www.wuhrai.com/download/kubelet-wuhrai && \
+        chmod +x /tmp/kubelet-wuhrai && \
+        sudo mv /tmp/kubelet-wuhrai /usr/local/bin/kubelet-wuhrai && \
+        echo "Domestic download completed" && \
+        kubelet-wuhrai --version 2>/dev/null || echo "version_check_failed"
+      `
+
+      downloadResult = await executeSSHCommand(sshConfig, domesticDownloadCommand)
+      installMethod = 'domestic'
+
+      if (downloadResult.success && downloadResult.stdout.includes('Domestic download completed')) {
+        console.log('✅ 国内下载安装成功')
+        const versionMatch = downloadResult.stdout.match(/kubelet-wuhrai version (\S+)/)
+        return {
+          success: true,
+          version: versionMatch ? versionMatch[1] : 'unknown',
+          method: installMethod,
+          networkType: networkInfo.networkType
+        }
       }
+    }
+
+    // 如果首选方法失败，尝试备用方法
+    console.log('📥 首选安装方法失败，尝试备用方法...')
+    if (networkInfo.isOverseas) {
+      // 如果是国外环境但GitHub失败，尝试国内源
+      const domesticDownloadCommand = `
+        curl -fsSL -o /tmp/kubelet-wuhrai https://www.wuhrai.com/download/kubelet-wuhrai && \
+        chmod +x /tmp/kubelet-wuhrai && \
+        sudo mv /tmp/kubelet-wuhrai /usr/local/bin/kubelet-wuhrai && \
+        echo "Domestic download completed" && \
+        kubelet-wuhrai --version 2>/dev/null || echo "version_check_failed"
+      `
+      downloadResult = await executeSSHCommand(sshConfig, domesticDownloadCommand)
+      installMethod = 'domestic-fallback'
+    } else {
+      // 如果是国内环境但国内源失败，尝试GitHub
+      const githubDownloadCommand = `
+        curl -fsSL -o /tmp/kubelet-wuhrai https://github.com/st-lzh/kubelet-wuhrai/releases/download/v1.0.0/kubelet-wuhrai && \
+        chmod +x /tmp/kubelet-wuhrai && \
+        sudo mv /tmp/kubelet-wuhrai /usr/local/bin/kubelet-wuhrai && \
+        echo "GitHub installation completed" && \
+        kubelet-wuhrai --version 2>/dev/null || echo "version_check_failed"
+      `
+      downloadResult = await executeSSHCommand(sshConfig, githubDownloadCommand)
+      installMethod = 'github-fallback'
+    }
+
+    // 检查备用方法是否成功
+    if (downloadResult.success && (
+      downloadResult.stdout.includes('GitHub installation completed') ||
+      downloadResult.stdout.includes('Domestic download completed')
+    )) {
+      console.log('✅ 备用方法安装成功')
+      const versionMatch = downloadResult.stdout.match(/kubelet-wuhrai version (\S+)/)
+      return {
+        success: true,
+        version: versionMatch ? versionMatch[1] : 'unknown',
+        method: installMethod,
+        networkType: networkInfo.networkType
+      }
+    }
+
+    console.log('❌ 所有安装方式都失败了')
+    return {
+      success: false,
+      error: `安装失败: ${downloadResult.stderr || '未知错误'}`,
+      networkType: networkInfo.networkType
     }
 
   } catch (error) {
-    console.error('❌ 自动部署过程中发生错误:', error)
+    console.error('❌ 自动下载安装过程中发生错误:', error)
     return {
       success: false,
-      error: `部署异常: ${error instanceof Error ? error.message : '未知错误'}`
+      error: `下载安装异常: ${error instanceof Error ? error.message : '未知错误'}`
     }
   }
 }
@@ -184,28 +265,34 @@ export async function GET(
         kubeletStatus = 'not_installed'
         recommendations.push({
           type: 'error',
-          message: 'kubelet-wuhrai命令未找到'
+          message: 'kubelet-wuhrai命令未找到，正在尝试自动下载安装...'
         })
-        
-        // 尝试自动部署kubelet-wuhrai
+
+        // 尝试自动下载并安装kubelet-wuhrai
         try {
-          const deployResult = await deployKubeletWuhrai(sshConfig)
-          if (deployResult.success) {
+          const installResult = await downloadAndInstallKubeletWuhrai(sshConfig)
+          if (installResult.success) {
             kubeletStatus = 'auto_installed'
+            const downloadMethod = installResult.method === 'domestic' ? '国内源' : 'GitHub源'
             recommendations.push({
               type: 'success',
-              message: '✅ 已自动部署kubelet-wuhrai到远程主机'
+              message: `✅ 已通过${downloadMethod}自动下载并安装kubelet-wuhrai到远程主机`
             })
-            if (deployResult.version) {
+            if (installResult.version) {
+              kubeletVersion = installResult.version
               recommendations.push({
                 type: 'info',
-                message: `版本信息: ${deployResult.version}`
+                message: `安装版本: ${installResult.version}`
               })
             }
           } else {
             recommendations.push({
               type: 'warning',
-              message: `自动部署失败: ${deployResult.error}`
+              message: `自动下载安装失败: ${installResult.error}`
+            })
+            recommendations.push({
+              type: 'info',
+              message: '您可以手动安装kubelet-wuhrai：curl -fsSL -o /tmp/kubelet-wuhrai https://github.com/st-lzh/kubelet-wuhrai/releases/download/v1.0.0/kubelet-wuhrai && chmod +x /tmp/kubelet-wuhrai && sudo mv /tmp/kubelet-wuhrai /usr/local/bin/kubelet-wuhrai'
             })
             recommendations.push({
               type: 'info',
@@ -229,7 +316,7 @@ export async function GET(
     }
 
     // 添加通用建议
-    if (kubeletStatus === 'installed') {
+    if (kubeletStatus === 'installed' || kubeletStatus === 'auto_installed') {
       recommendations.push({
         type: 'success',
         message: '✅ 远程主机已准备好进行AI聊天'

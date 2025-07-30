@@ -141,7 +141,7 @@ export function useRedisChat(options: UseRedisChatOptions = {}) {
   }, [apiCall])
 
   // 发送消息
-  const sendMessage = useCallback(async (content: string, modelConfig?: { model: string; apiKey: string; baseUrl?: string; provider?: string; hostId?: string }) => {
+  const sendMessage = useCallback(async (content: string, modelConfig?: { model: string; apiKey: string; baseUrl?: string; provider?: string; hostId?: string; autoExecution?: boolean; isK8sMode?: boolean }) => {
     if (!content.trim() || isLoading) return
 
     setIsLoading(true)
@@ -195,13 +195,14 @@ export function useRedisChat(options: UseRedisChatOptions = {}) {
           model: modelConfig?.model || config.model,
           temperature: config.temperature,
           maxTokens: config.maxTokens,
-          autoExecution: config.autoExecution,
+          autoExecution: modelConfig?.autoExecution !== undefined ? modelConfig.autoExecution : config.autoExecution,
           hostId: modelConfig?.hostId || config.hostId || 'local', // 优先使用传入的hostId
           // 添加模型配置参数
           ...(modelConfig && {
             apiKey: modelConfig.apiKey,
             baseUrl: modelConfig.baseUrl,
-            provider: modelConfig.provider || 'openai-compatible' // 添加provider字段
+            provider: modelConfig.provider || 'openai-compatible', // 添加provider字段
+            isK8sMode: modelConfig.isK8sMode // 添加K8s模式标识
           })
         }
 

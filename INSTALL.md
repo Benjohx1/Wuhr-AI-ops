@@ -65,6 +65,9 @@ cd wuhr-ai-ops
 - **Docker**: 官方Docker Hub
 - **Node.js**: 官方NodeSource
 
+**kubelet-wuhrai 下载源：**
+- GitHub Releases: https://github.com/st-lzh/kubelet-wuhrai/releases/download/v1.0.0/kubelet-wuhrai
+
 **适用场景：**
 - 海外网络环境
 - 希望使用官方源

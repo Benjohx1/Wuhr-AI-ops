@@ -206,8 +206,15 @@ export function validateModelConfig(
 
   // 检查模型是否支持
   const provider = findProviderByModel(modelName)
+
+  // 对于openai-compatible提供商，如果有baseUrl，则允许任何模型名称
   if (!provider) {
-    errors.push(`不支持的模型: ${modelName}`)
+    if (baseUrl && baseUrl.trim().length > 0) {
+      // 有baseUrl的情况下，认为是openai-compatible提供商，允许任何模型
+      console.log('🔧 检测到自定义模型配置:', { modelName, baseUrl })
+    } else {
+      errors.push(`不支持的模型: ${modelName}`)
+    }
   }
 
   // 检查API密钥

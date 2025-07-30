@@ -1,4 +1,5 @@
-<img width="1512" height="949" alt="截屏2025-07-31 00 35 24" src="https://github.com/user-attachments/assets/0d1e2ab2-4308-445b-bef4-7cfe0e479a94" /># Wuhr AI Ops 智能运维平台
+<img width="1512" height="949" alt="截屏2025-07-31 00 34 53" src="https://github.com/user-attachments/assets/bdfb9e4f-ff6d-49fa-b72e-fbceef8050db" />
+ Wuhr AI Ops 智能运维平台
 
 <div align="center">
 
@@ -131,10 +132,8 @@
 
 ### 🎥 视频操作指南
 
-> **📹 完整操作演示视频**
->
-> 详细的系统使用教程和最佳实践指南即将发布，敬请期待！
->
+> **📹 [完整操作演示视频](https://www.bilibili.com/video/BV1EK86ziE2y/?vd_source=56a061d9ef5994305d047165b2c6a3d5)**
+
 > 视频内容将包括：
 > - 系统安装部署演示
 > - AI助手使用技巧

@@ -280,7 +280,6 @@ configure_npm_mirrors() {
     log_step "配置npm国内镜像源"
     
     npm config set registry $NPM_REGISTRY
-    npm config set disturl $NODE_MIRROR
     npm config set sass_binary_site https://npmmirror.com/mirrors/node-sass
     npm config set electron_mirror https://npmmirror.com/mirrors/electron
     npm config set puppeteer_download_host https://npmmirror.com/mirrors
@@ -289,7 +288,7 @@ configure_npm_mirrors() {
     npm config set phantomjs_cdnurl https://npmmirror.com/mirrors/phantomjs
     npm config set selenium_cdnurl https://npmmirror.com/mirrors/selenium
     npm config set node_inspector_cdnurl https://npmmirror.com/mirrors/node-inspector
-    npm config set npm_config_cache ~/.npm-cache
+    npm config set cache ~/.npm-cache
     
     log_success "npm国内镜像源配置完成"
     log_info "当前npm源: $(npm config get registry)"

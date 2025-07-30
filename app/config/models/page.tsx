@@ -14,7 +14,11 @@ import {
   Tag,
   Tooltip,
   message,
-  Avatar
+  Avatar,
+  Row,
+  Col,
+  Divider,
+  Alert
 } from 'antd'
 import {
   PlusOutlined,
@@ -22,11 +26,16 @@ import {
   DeleteOutlined,
   ApiOutlined,
   LoadingOutlined,
-  BulbOutlined
+  BulbOutlined,
+  CheckCircleOutlined,
+  InfoCircleOutlined,
+  RocketOutlined
 } from '@ant-design/icons'
 import MainLayout from '../../components/layout/MainLayout'
+import { PROVIDER_CONFIGS, getDefaultModels, getProviderDisplayInfo, isBaseUrlRequired } from '../kubelet-wuhrai-providers'
+import { DEFAULT_MODELS } from '../../types/api'
 
-const { Title } = Typography
+const { Title, Text } = Typography
 const { Option } = Select
 
 // 模型配置接口
@@ -50,8 +59,9 @@ interface ModelFormData {
   apiKey: string
   baseUrl?: string
   description?: string
-  isDefault: boolean
 }
+
+
 
 export default function ModelsPage() {
   const [modelConfigs, setModelConfigs] = useState<ModelConfig[]>([])
@@ -65,12 +75,11 @@ export default function ModelsPage() {
 
   // 提供商选项
   const providers = [
-    { id: 'openai-compatible', name: 'OpenAI Compatible' },
-    { id: 'deepseek', name: 'DeepSeek' },
-    { id: 'gemini', name: 'Google Gemini' },
-    { id: 'qwen', name: 'Qwen' },
-    { id: 'doubao', name: 'Doubao' },
-    { id: 'custom', name: '自定义' }
+    { id: 'openai-compatible', name: 'OpenAI Compatible', color: '#10A37F' },
+    { id: 'deepseek', name: 'DeepSeek', color: '#1890FF' },
+    { id: 'gemini', name: 'Google Gemini', color: '#4285F4' },
+    { id: 'qwen', name: 'Qwen', color: '#FF6B35' },
+    { id: 'doubao', name: 'Doubao', color: '#722ED1' }
   ]
 
   // 获取模型配置列表
@@ -84,7 +93,6 @@ export default function ModelsPage() {
       if (response.ok) {
         const data = await response.json()
         setModelConfigs(data.models || [])
-
       } else {
         message.error('获取模型配置失败')
       }
@@ -98,6 +106,7 @@ export default function ModelsPage() {
 
   useEffect(() => {
     fetchModelConfigs()
+    fetchPresetModels()
   }, [])
 
   // 保存模型配置
@@ -204,6 +213,52 @@ export default function ModelsPage() {
     }
   }
 
+  // 处理提供商选择变化
+  const handleProviderChange = (provider: string) => {
+    form.setFieldsValue({
+      provider,
+      modelName: '',
+      displayName: '',
+      baseUrl: provider === 'openai-compatible' ? 'https://api.openai.com/v1' : undefined
+    })
+    // 获取该提供商的预设模型
+    fetchPresetModels(provider)
+  }
+
+  // 获取预设模型列表
+  const [presetModels, setPresetModels] = useState<any[]>([])
+
+  const fetchPresetModels = async (provider?: string) => {
+    try {
+      const params = new URLSearchParams()
+      if (provider && provider !== 'all') {
+        params.append('provider', provider)
+      }
+      
+      const response = await fetch(`/api/config/preset-models?${params}`)
+      const data = await response.json()
+      
+      if (data.success) {
+        setPresetModels(data.presetModels.filter((model: any) => model.isActive))
+      }
+    } catch (error) {
+      console.error('Failed to fetch preset models:', error)
+    }
+  }
+
+  // 处理预设模型选择
+  const handlePresetModelSelect = (presetModelId: string) => {
+    const presetModel = presetModels.find(model => model.id === presetModelId)
+    
+    if (presetModel) {
+      form.setFieldsValue({
+        modelName: presetModel.name,
+        displayName: presetModel.displayName,
+        description: presetModel.description
+      })
+    }
+  }
+
   // 过滤模型
   const filteredModels = modelConfigs.filter(model => {
     if (selectedProvider === 'all') return true
@@ -214,35 +269,44 @@ export default function ModelsPage() {
   const columns = [
     {
       title: '模型信息',
-      key: 'info',
+      key: 'model',
       render: (record: ModelConfig) => (
         <div className="flex items-center space-x-3">
-          <Avatar
-            icon={<BulbOutlined />}
-            style={{ backgroundColor: '#1890ff' }}
-          />
+          <Avatar 
+            size={40} 
+            style={{ 
+              backgroundColor: providers.find(p => p.id === record.provider)?.color || '#722ed1',
+              color: '#FFFFFF',
+              fontWeight: 'bold'
+            }}
+          >
+            {record.provider === 'deepseek' ? 'DS' :
+             record.provider === 'openai-compatible' ? 'AI' :
+             record.provider === 'gemini' ? 'GM' :
+             record.provider === 'qwen' ? 'QW' : 'DB'}
+          </Avatar>
           <div>
-            <div className="font-medium">{record.displayName}</div>
+            <div className="font-medium text-gray-900">{record.displayName}</div>
             <div className="text-sm text-gray-500">{record.modelName}</div>
+            <div className="text-xs text-gray-400">{record.provider}</div>
           </div>
         </div>
-      ),
-    },
-    {
-      title: '提供商',
-      dataIndex: 'provider',
-      key: 'provider',
-      render: (provider: string) => (
-        <Tag color="blue">{providers.find(p => p.id === provider)?.name || provider}</Tag>
       ),
     },
     {
       title: '状态',
       key: 'status',
       render: (record: ModelConfig) => (
-        <Tag color={record.isDefault ? 'green' : 'default'}>
-          {record.isDefault ? '默认' : '普通'}
-        </Tag>
+        <Space direction="vertical" size="small">
+          {testResults[record.id] && (
+            <Tag color={testResults[record.id].success ? 'success' : 'error'}>
+              {testResults[record.id].success ? 
+                `✅ ${testResults[record.id].responseTime}ms` : 
+                '❌ 测试失败'
+              }
+            </Tag>
+          )}
+        </Space>
       ),
     },
     {
@@ -271,8 +335,7 @@ export default function ModelsPage() {
                   provider: record.provider,
                   apiKey: record.apiKey,
                   baseUrl: record.baseUrl || '',
-                  description: record.description || '',
-                  isDefault: record.isDefault
+                  description: record.description || ''
                 })
                 setIsModalVisible(true)
               }}
@@ -301,10 +364,14 @@ export default function ModelsPage() {
     <MainLayout>
       <div className="p-6">
         <div className="flex justify-between items-center mb-6">
-          <Title level={2}>模型配置管理</Title>
+          <div>
+            <Title level={2} className="mb-2">模型配置管理</Title>
+            <Text type="secondary">管理您的AI模型配置，支持多种提供商和模型类型</Text>
+          </div>
           <Button
             type="primary"
             icon={<PlusOutlined />}
+            size="large"
             onClick={() => {
               setEditingModel(null)
               form.resetFields()
@@ -321,11 +388,18 @@ export default function ModelsPage() {
               value={selectedProvider}
               onChange={setSelectedProvider}
               style={{ width: 200 }}
+              placeholder="筛选提供商"
             >
               <Option value="all">所有提供商</Option>
               {providers.map(provider => (
                 <Option key={provider.id} value={provider.id}>
-                  {provider.name}
+                  <span className="flex items-center">
+                    <span 
+                      className="mr-2 w-4 h-4 rounded" 
+                      style={{ backgroundColor: provider.color }}
+                    ></span>
+                    {provider.name}
+                  </span>
                 </Option>
               ))}
             </Select>
@@ -346,7 +420,12 @@ export default function ModelsPage() {
         </Card>
 
         <Modal
-          title={editingModel ? '编辑模型配置' : '添加模型配置'}
+          title={
+            <div className="flex items-center">
+              <RocketOutlined className="mr-2 text-blue-500" />
+              {editingModel ? '编辑模型配置' : '添加模型配置'}
+            </div>
+          }
           open={isModalVisible}
           onCancel={() => {
             setIsModalVisible(false)
@@ -354,64 +433,112 @@ export default function ModelsPage() {
             form.resetFields()
           }}
           footer={null}
-          width={600}
+          width={700}
         >
           <Form
             form={form}
             layout="vertical"
             onFinish={saveModelConfig}
           >
-            <Form.Item
-              name="displayName"
-              label="显示名称"
-              rules={[{ required: true, message: '请输入显示名称' }]}
-            >
-              <Input placeholder="例如：GPT-4" />
-            </Form.Item>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  name="provider"
+                  label="提供商"
+                  rules={[{ required: true, message: '请选择提供商' }]}
+                >
+                  <Select 
+                    placeholder="选择提供商"
+                    onChange={handleProviderChange}
+                    showSearch
+                    filterOption={(input, option) => {
+                      const label = option?.label || option?.children || '';
+                      return String(label).toLowerCase().includes(input.toLowerCase());
+                    }}
+                  >
+                    {providers.map(provider => (
+                      <Option key={provider.id} value={provider.id}>
+                        <span className="flex items-center">
+                          <span 
+                            className="mr-2 w-4 h-4 rounded" 
+                            style={{ backgroundColor: provider.color }}
+                          ></span>
+                          {provider.name}
+                        </span>
+                      </Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  name="modelName"
+                  label="预设模型"
+                  rules={[{ required: true, message: '请选择或输入模型名称' }]}
+                >
+                  <Select
+                    placeholder="选择预设模型或自定义输入"
+                    showSearch
+                    allowClear
+                    onChange={handlePresetModelSelect}
+                    filterOption={(input, option) => {
+                      const label = option?.label || option?.children || '';
+                      return String(label).toLowerCase().includes(input.toLowerCase());
+                    }}
+                  >
+                    {presetModels.map(model => (
+                      <Option key={model.id} value={model.id}>
+                        <div>
+                          <div className="font-medium">{model.displayName}</div>
+                          <div className="text-xs text-gray-500">{model.name}</div>
+                          <div className="text-xs text-gray-400">{model.description}</div>
+                        </div>
+                      </Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              </Col>
+            </Row>
 
-            <Form.Item
-              name="modelName"
-              label="模型名称"
-              rules={[{ required: true, message: '请输入模型名称' }]}
-            >
-              <Input placeholder="例如：gpt-4" />
-            </Form.Item>
-
-            <Form.Item
-              name="provider"
-              label="提供商"
-              rules={[{ required: true, message: '请选择提供商' }]}
-            >
-              <Select placeholder="选择提供商">
-                {providers.map(provider => (
-                  <Option key={provider.id} value={provider.id}>
-                    {provider.name}
-                  </Option>
-                ))}
-              </Select>
-            </Form.Item>
-
-            <Form.Item
-              name="apiKey"
-              label="API密钥"
-              rules={[{ required: true, message: '请输入API密钥' }]}
-            >
-              <Input.Password placeholder="输入API密钥" />
-            </Form.Item>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  name="displayName"
+                  label="显示名称"
+                  rules={[{ required: true, message: '请输入显示名称' }]}
+                >
+                  <Input placeholder="例如：GPT-4" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  name="apiKey"
+                  label="API密钥"
+                  rules={[{ required: true, message: '请输入API密钥' }]}
+                >
+                  <Input.Password placeholder="输入API密钥" />
+                </Form.Item>
+              </Col>
+            </Row>
 
             <Form.Item
               name="baseUrl"
               label="Base URL"
+              extra={form.getFieldValue('provider') === 'openai-compatible' ? 'OpenAI兼容服务需要自定义Base URL' : '可选，自定义API地址'}
             >
-              <Input placeholder="可选，自定义API地址" />
+              <Input placeholder={form.getFieldValue('provider') === 'openai-compatible' ? 'https://api.openai.com/v1' : '可选，自定义API地址'} />
             </Form.Item>
 
             <Form.Item
               name="description"
               label="描述"
             >
-              <Input.TextArea placeholder="可选，模型描述" />
+              <Input.TextArea placeholder="可选，模型描述" rows={3} />
             </Form.Item>
+
+
+
+            <Divider />
 
             <div className="flex justify-end space-x-2">
               <Button onClick={() => {
@@ -421,7 +548,7 @@ export default function ModelsPage() {
               }}>
                 取消
               </Button>
-              <Button type="primary" htmlType="submit">
+              <Button type="primary" htmlType="submit" icon={<CheckCircleOutlined />}>
                 {editingModel ? '更新' : '创建'}
               </Button>
             </div>

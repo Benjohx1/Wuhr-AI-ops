@@ -10,7 +10,6 @@ interface ModelConfigRequest {
   apiKey: string
   baseUrl?: string
   description?: string
-  isDefault?: boolean
 }
 
 // 获取用户的模型配置列表
@@ -29,7 +28,6 @@ export async function GET(request: NextRequest) {
         userId: user.id
       },
       orderBy: [
-        { isDefault: 'desc' },
         { createdAt: 'desc' }
       ]
     })
@@ -70,8 +68,7 @@ export async function POST(request: NextRequest) {
       provider,
       apiKey,
       baseUrl,
-      description,
-      isDefault = false
+      description
     } = body
 
     // 验证必需字段
@@ -111,19 +108,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 如果设置为默认，先取消其他默认配置
-    if (isDefault) {
-      await prisma.modelConfig.updateMany({
-        where: {
-          userId: user.id,
-          isDefault: true
-        },
-        data: {
-          isDefault: false
-        }
-      })
-    }
-
     // 创建新的模型配置
     const newConfig = await prisma.modelConfig.create({
       data: {
@@ -134,7 +118,6 @@ export async function POST(request: NextRequest) {
         apiKey,
         baseUrl,
         description,
-        isDefault,
         isActive: true
       }
     })
@@ -207,19 +190,7 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // 如果设置为默认，先取消其他默认配置
-    if (updateData.isDefault) {
-      await prisma.modelConfig.updateMany({
-        where: {
-          userId: user.id,
-          isDefault: true,
-          id: { not: id }
-        },
-        data: {
-          isDefault: false
-        }
-      })
-    }
+
 
     // 更新配置
     const updatedConfig = await prisma.modelConfig.update({

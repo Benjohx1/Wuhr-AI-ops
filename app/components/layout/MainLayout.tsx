@@ -244,6 +244,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             key: '/config/models',
             label: <Link href="/config/models">模型配置</Link>,
           },
+          {
+            key: '/config/models/preset',
+            label: <Link href="/config/models/preset">预设模型</Link>,
+          },
         ],
       })
     }

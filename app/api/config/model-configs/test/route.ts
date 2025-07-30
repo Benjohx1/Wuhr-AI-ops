@@ -111,7 +111,19 @@ async function testDeepSeek(apiKey: string, modelName: string) {
     return { success: true }
   } else {
     const error = await response.text()
-    return { success: false, error: `HTTP ${response.status}: ${error}` }
+    let errorMessage = `HTTP ${response.status}: ${error}`
+    
+    // 针对DeepSeek常见错误提供更友好的提示
+    if (response.status === 400 && error.includes('Model Not Exist')) {
+      const supportedModels = ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner']
+      errorMessage = `模型名称 "${modelName}" 不存在。DeepSeek支持的模型：${supportedModels.join(', ')}。请检查模型名称是否正确。`
+    } else if (response.status === 401) {
+      errorMessage = 'API密钥无效或已过期，请检查DeepSeek API密钥是否正确。'
+    } else if (response.status === 403) {
+      errorMessage = 'API密钥权限不足，请检查DeepSeek API密钥的权限设置。'
+    }
+    
+    return { success: false, error: errorMessage }
   }
 }
 

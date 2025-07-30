@@ -29,8 +29,10 @@ export async function GET(request: NextRequest) {
       const defaultModel = await prisma.modelConfig.findFirst({
         where: {
           userId: user.id,
-          isDefault: true,
           isActive: true
+        },
+        orderBy: {
+          createdAt: 'desc'
         }
       })
 
@@ -190,7 +192,6 @@ export async function PUT(request: NextRequest) {
         isActive: true
       },
       orderBy: [
-        { isDefault: 'desc' },
         { displayName: 'asc' }
       ]
     })

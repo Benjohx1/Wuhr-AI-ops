@@ -2,65 +2,84 @@
 
 ## 📋 概述
 
-Wuhr AI Ops 提供了三个安装脚本来适应不同的网络环境：
+Wuhr AI Ops 提供了两个专门的安装脚本来适应不同的网络环境：
 
-1. **`install-selector.sh`** - 智能脚本选择器（推荐）
-2. **`install-cn.sh`** - 国内环境专用脚本
-3. **`install.sh`** - 通用安装脚本
+1. **`install-zh.sh`** - 国内环境专用脚本（中文）
+2. **`install-en.sh`** - 国外环境专用脚本（英文）
 
 ## 🚀 快速开始
 
-### 方法一：使用智能选择器（推荐）
+### 方法一：一键部署（推荐）
 
+**国内用户一键部署:**
 ```bash
-# 自动检测并推荐最适合的脚本
-./install-selector.sh auto
-
-# 或者直接运行选择器
-./install-selector.sh
+curl -fsSL https://raw.githubusercontent.com/st-lzh/wuhr-ai-ops/main/deploy-zh.sh | bash
 ```
 
-### 方法二：直接使用特定脚本
+**国外用户一键部署:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/st-lzh/wuhr-ai-ops/main/deploy-en.sh | bash
+```
+
+### 方法二：手动克隆部署
 
 ```bash
-# 国内环境
-./install-cn.sh
+# 克隆项目
+git clone https://github.com/st-lzh/wuhr-ai-ops.git
+cd wuhr-ai-ops
 
-# 海外环境
-./install.sh
+# 国内用户使用中文安装脚本
+./install-zh.sh
+
+# 国外用户使用英文安装脚本
+./install-en.sh
 ```
 
 ## 📖 脚本详细说明
 
-### 1. install-selector.sh - 智能脚本选择器
+### 1. deploy-zh.sh - 国内环境一键部署脚本
 
 **功能特性：**
-- 🔍 自动检测网络环境
-- 🎯 智能推荐最适合的安装脚本
-- 📋 提供友好的选择菜单
-- ✅ 支持命令行参数
+- 🚀 真正的一键部署，自动克隆代码
+- 🇨🇳 专为中国大陆网络环境优化
+- 🔍 自动检查Git和网络连接
+- 📦 自动下载并执行安装脚本
+- ⚡ 完整的部署流程自动化
 
-**使用方法：**
-```bash
-# 自动检测并推荐
-./install-selector.sh auto
+**部署流程：**
+1. 检查Git是否安装
+2. 检查网络连接到GitHub
+3. 自动克隆代码仓库
+4. 执行install-zh.sh安装脚本
+5. 显示部署完成信息
 
-# 直接使用国内环境脚本
-./install-selector.sh cn
+**适用场景：**
+- 全新服务器部署
+- 中国大陆网络环境
+- 需要完全自动化部署
 
-# 直接使用通用安装脚本
-./install-selector.sh global
+### 2. deploy-en.sh - 国外环境一键部署脚本
 
-# 显示帮助信息
-./install-selector.sh help
-```
+**功能特性：**
+- 🚀 真正的一键部署，自动克隆代码
+- 🌍 适用于全球网络环境
+- 🔍 自动检查Git和网络连接
+- 📦 自动下载并执行安装脚本
+- ⚡ 完整的部署流程自动化
 
-**网络检测逻辑：**
-- 测试百度（国内）和谷歌（海外）的网络延迟
-- 比较延迟时间，推荐更快的网络环境对应的脚本
-- 国内延迟 < 100ms 且 < 海外延迟时，推荐国内脚本
+**部署流程：**
+1. 检查Git是否安装
+2. 检查网络连接到GitHub
+3. 自动克隆代码仓库
+4. 执行install-en.sh安装脚本
+5. 显示部署完成信息
 
-### 2. install-cn.sh - 国内环境专用脚本
+**适用场景：**
+- 全新服务器部署
+- 海外网络环境
+- 需要完全自动化部署
+
+### 3. install-zh.sh - 国内环境专用安装脚本
 
 **功能特性：**
 - 🇨🇳 专为中国大陆网络环境优化
@@ -68,6 +87,7 @@ Wuhr AI Ops 提供了三个安装脚本来适应不同的网络环境：
 - 📦 自动下载 kubelet-wuhrai
 - 🔧 优化Docker镜像源配置
 - ⚡ 提升下载和安装速度
+- 🤖 自动初始化16个主流AI模型预设
 
 **国内镜像源配置：**
 - **npm**: https://registry.npmmirror.com/
@@ -84,7 +104,7 @@ Wuhr AI Ops 提供了三个安装脚本来适应不同的网络环境：
 - 需要快速下载依赖包
 - 希望使用国内镜像源
 
-### 3. install.sh - 通用安装脚本
+### 4. install-en.sh - 国外环境专用安装脚本
 
 **功能特性：**
 - 🌍 适用于全球网络环境
@@ -92,11 +112,17 @@ Wuhr AI Ops 提供了三个安装脚本来适应不同的网络环境：
 - 🛡️ 增强的错误处理
 - 📊 端口冲突检测
 - 🔍 Docker服务状态检查
+- 🤖 自动初始化16个主流AI模型预设
 
 **官方源配置：**
 - **npm**: https://registry.npmjs.org/
 - **Docker**: 官方Docker Hub
 - **Node.js**: 官方NodeSource
+
+**适用场景：**
+- 海外网络环境
+- 希望使用官方源
+- 网络连接稳定
 
 **新增功能：**
 - 端口占用检测
@@ -236,8 +262,10 @@ docker-compose down -v
 # 删除node_modules
 rm -rf node_modules
 
-# 重新运行安装脚本
-./install-selector.sh
+# 重新运行安装脚本（根据您的网络环境选择）
+./install-zh.sh  # 国内用户
+# 或
+./install-en.sh  # 国外用户
 ```
 
 ## 📞 技术支持
@@ -250,13 +278,14 @@ rm -rf node_modules
 
 ## 🔄 更新说明
 
-### v2.0.0 更新内容
-- ✅ 新增国内环境专用脚本
-- ✅ 新增智能脚本选择器
+### v2.1.0 更新内容
+- ✅ 重构为双脚本架构（install-zh.sh / install-en.sh）
+- ✅ 移除智能选择器，简化部署流程
+- ✅ 新增kubelet-wuhrai自动部署功能
+- ✅ 新增智能K8s/Linux模式识别
+- ✅ 自动初始化16个主流AI模型预设
 - ✅ 改进错误处理和日志记录
-- ✅ 添加端口冲突检测
-- ✅ 优化网络信息获取
-- ✅ 修复权限初始化脚本错误
+- ✅ 优化网络信息获取和显示
 - ✅ 增强Docker服务状态检查
 
 ---

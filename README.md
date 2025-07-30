@@ -91,16 +91,37 @@
 
 ### 一键启动
 
+#### 🚀 快速部署（推荐）
+
+**国内用户一键部署:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/st-lzh/wuhr-ai-ops/main/deploy-zh.sh | bash
+```
+
+**国外用户一键部署:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/st-lzh/wuhr-ai-ops/main/deploy-en.sh | bash
+```
+
+#### 📦 手动克隆部署
+
 ```bash
 # 克隆项目
-git clone https://github.com/st-lzh/Wuhr-AI-ops.git
-cd Wuhr-AI-ops
+git clone https://github.com/st-lzh/wuhr-ai-ops.git
+cd wuhr-ai-ops
 
-# 一键启动（自动检测环境、安装依赖、启动服务）
-./install.sh
+# 国内用户使用中文安装脚本
+./install-zh.sh
+
+# 国外用户使用英文安装脚本  
+./install-en.sh
 ```
 
 > **🔧 智能环境检测**：脚本会自动检测系统环境，如果缺少Docker、Node.js等必需组件，会询问是否自动安装
+> 
+> **🌍 环境适配**：
+> - **国内版本 (install-zh.sh)**：使用国内镜像源，优化网络下载速度
+> - **国外版本 (install-en.sh)**：使用官方镜像源，适合国际网络环境
 > 
 > **⚙️ 启动方式选择**：
 > - **前台运行模式**：开发测试使用，可查看实时日志

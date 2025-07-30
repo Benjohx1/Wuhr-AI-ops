@@ -476,6 +476,21 @@ initialize_permissions() {
     fi
 }
 
+# 初始化预设模型
+initialize_preset_models() {
+    log_step "初始化预设模型"
+    
+    if [ -f "init-all-preset-models.js" ]; then
+        if node init-all-preset-models.js >/dev/null 2>&1; then
+            log_success "预设模型初始化完成"
+        else
+            log_warning "预设模型初始化失败，跳过此步骤"
+        fi
+    else
+        log_warning "预设模型初始化脚本不存在"
+    fi
+}
+
 # 构建和启动应用
 build_and_start_application() {
     log_step "构建和启动应用"
@@ -643,6 +658,9 @@ main() {
     
     # 初始化权限系统
     initialize_permissions
+    
+    # 初始化预设模型
+    initialize_preset_models
     
     # 构建和启动应用
     build_and_start_application

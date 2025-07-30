@@ -472,6 +472,21 @@ initialize_permissions() {
     fi
 }
 
+# Initialize preset models
+initialize_preset_models() {
+    log_step "Initializing preset models"
+    
+    if [ -f "init-all-preset-models.js" ]; then
+        if node init-all-preset-models.js >/dev/null 2>&1; then
+            log_success "Preset models initialization completed"
+        else
+            log_warning "Preset models initialization failed, skipping this step"
+        fi
+    else
+        log_warning "Preset models initialization script not found"
+    fi
+}
+
 # Build and start application
 build_and_start_application() {
     log_step "Building and starting application"
@@ -644,6 +659,9 @@ main() {
     
     # Initialize permission system
     initialize_permissions
+    
+    # Initialize preset models
+    initialize_preset_models
     
     # Build and start application
     build_and_start_application

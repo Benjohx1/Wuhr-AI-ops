@@ -51,6 +51,7 @@ import {
   DesktopOutlined
 } from '@ant-design/icons'
 import { useRedisChat } from '../../hooks/useRedisChat'
+import { detectMode, getModeSuggestionText } from '../../../lib/utils/modeDetection'
 
 // 模型配置接口
 interface ModelConfig {
@@ -348,15 +349,21 @@ const SystemChat: React.FC = () => {
 
       const result = await response.json()
 
-      if (result.success) {
+              if (result.success) {
         const { kubeletStatus, kubeletVersion, recommendations } = result.data
 
         let statusText = ''
+        let statusType: 'success' | 'warning' | 'error' = 'error'
 
         if (kubeletStatus === 'installed') {
           statusText = `✅ kubelet-wuhrai已安装 ${kubeletVersion ? `(v${kubeletVersion})` : ''}`
+          statusType = 'success'
+        } else if (kubeletStatus === 'auto_installed') {
+          statusText = `🚀 kubelet-wuhrai已自动部署 ${kubeletVersion ? `(v${kubeletVersion})` : ''}`
+          statusType = 'success'
         } else {
           statusText = '❌ kubelet-wuhrai未安装'
+          statusType = 'error'
         }
 
         // 显示详细信息
@@ -575,6 +582,38 @@ const SystemChat: React.FC = () => {
     if (!currentModelConfig) {
       message.error('请先选择一个AI模型')
       return
+    }
+
+    // 智能模式检测
+    const currentMode = isK8sMode ? 'k8s' : 'linux'
+    const modeDetectionResult = detectMode(inputValue, currentMode)
+    
+    // 如果检测到模式不匹配且置信度足够高，询问用户是否切换
+    const suggestionText = getModeSuggestionText(modeDetectionResult, currentMode)
+    if (suggestionText && modeDetectionResult.confidence > 0.6) {
+      const shouldSwitch = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: '🤖 智能模式检测',
+          content: (
+            <div>
+              <p>{suggestionText}</p>
+              <p className="text-gray-500 text-sm mt-2">
+                检测原因: {modeDetectionResult.reason}
+              </p>
+            </div>
+          ),
+          okText: `切换到${modeDetectionResult.suggestedMode === 'k8s' ? 'K8s' : 'Linux'}模式`,
+          cancelText: '保持当前模式',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        })
+      })
+
+      if (shouldSwitch) {
+        setIsK8sMode(modeDetectionResult.suggestedMode === 'k8s')
+        const newModeText = modeDetectionResult.suggestedMode === 'k8s' ? 'K8s集群' : 'Linux系统'
+        message.success(`已切换到${newModeText}模式`)
+      }
     }
 
     // 检查当前模型是否支持多模态
@@ -932,18 +971,29 @@ const SystemChat: React.FC = () => {
                 />
 
                 <div className="flex flex-col space-y-2">
-                  <Tooltip title="K8s集群命令模式 (Ctrl+K切换)">
+                  <Tooltip title={`${isK8sMode ? 'K8s集群' : 'Linux系统'}命令模式 (Ctrl+K切换) | 智能模式检测已启用`}>
                     <Button
-                      icon={<GlobalOutlined />}
+                      icon={isK8sMode ? <GlobalOutlined /> : <DesktopOutlined />}
                       onClick={() => setIsK8sMode(!isK8sMode)}
                       type={isK8sMode ? 'primary' : 'default'}
                       style={{
-                        backgroundColor: isK8sMode ? '#1890ff' : undefined,
-                        borderColor: isK8sMode ? '#1890ff' : undefined,
-                        color: isK8sMode ? '#fff' : undefined
+                        backgroundColor: isK8sMode ? '#1890ff' : '#52c41a',
+                        borderColor: isK8sMode ? '#1890ff' : '#52c41a',
+                        color: '#fff'
                       }}
                     >
-                      K8s
+                      {isK8sMode ? 'K8s' : 'Linux'}
+                      <Badge 
+                        count="AI" 
+                        size="small" 
+                        style={{ 
+                          backgroundColor: '#722ed1',
+                          fontSize: '10px',
+                          height: '16px',
+                          lineHeight: '16px',
+                          minWidth: '20px'
+                        }} 
+                      />
                     </Button>
                   </Tooltip>
 

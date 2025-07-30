@@ -471,8 +471,8 @@ initialize_permissions() {
 initialize_preset_models() {
     log_step "初始化预设模型"
     
-    if [ -f "init-all-preset-models.js" ]; then
-        if node init-all-preset-models.js >/dev/null 2>&1; then
+    if [ -f "scripts/init-preset-models.js" ]; then
+        if node scripts/init-preset-models.js >/dev/null 2>&1; then
             log_success "预设模型初始化完成"
         else
             log_warning "预设模型初始化失败，跳过此步骤"

@@ -476,8 +476,8 @@ initialize_permissions() {
 initialize_preset_models() {
     log_step "Initializing preset models"
     
-    if [ -f "init-all-preset-models.js" ]; then
-        if node init-all-preset-models.js >/dev/null 2>&1; then
+    if [ -f "scripts/init-preset-models.js" ]; then
+        if node scripts/init-preset-models.js >/dev/null 2>&1; then
             log_success "Preset models initialization completed"
         else
             log_warning "Preset models initialization failed, skipping this step"

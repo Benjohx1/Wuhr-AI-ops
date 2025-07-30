@@ -114,14 +114,32 @@ cd wuhr-ai-ops
 
 ### 4. 服务启动
 - 启动Docker容器（PostgreSQL、Redis、pgAdmin）
-- 初始化数据库
-- 创建管理员账户
-- 初始化权限系统
+- 等待数据库服务就绪
 
-### 5. 应用部署
+### 5. 数据库初始化
+- 重置和同步数据库架构
+- 生成Prisma客户端
+- 验证数据库连接
+
+### 6. 用户和权限初始化
+- 创建管理员用户（admin@wuhr.ai）
+- 初始化权限系统
+- 设置用户角色和权限
+
+### 7. 预设模型初始化
+- 初始化17个主流AI模型预设
+- 包含OpenAI、DeepSeek、Gemini、Qwen、Doubao等
+- 支持多种功能特性标记
+
+### 8. 应用部署
 - 安装Node.js依赖
 - 构建应用
 - 启动Web服务器
+
+### 9. 服务验证
+- 验证应用启动状态
+- 检查端口可用性
+- 确认服务正常运行
 
 ## 🌐 访问信息
 
@@ -141,9 +159,123 @@ cd wuhr-ai-ops
 - **邮箱**: admin@wuhr.ai
 - **密码**: Admin123!
 
-## 🔍 故障排除
+## 🔧 手动部署步骤
 
-### 常见问题
+如果您需要手动部署或了解详细的安装过程，请按照以下步骤操作：
+
+### 1. 环境准备
+```bash
+# 克隆项目
+git clone https://github.com/st-lzh/wuhr-ai-ops.git
+cd wuhr-ai-ops
+
+# 确保安装了必要的工具
+sudo apt update
+sudo apt install -y curl wget git
+```
+
+### 2. 安装Docker和Docker Compose
+```bash
+# 安装Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+
+# 安装Docker Compose
+sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+
+# 启动Docker服务
+sudo systemctl start docker
+sudo systemctl enable docker
+```
+
+### 3. 安装Node.js
+```bash
+# 安装Node.js 18+
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# 验证安装
+node --version
+npm --version
+```
+
+### 4. 启动数据库服务
+```bash
+# 启动Docker容器
+docker-compose up -d postgres redis pgadmin
+
+# 等待服务启动
+sleep 30
+
+# 检查服务状态
+docker-compose ps
+```
+
+### 5. 安装项目依赖
+```bash
+# 安装npm依赖
+npm install
+
+# 清理npm缓存（可选）
+npm cache clean --force
+```
+
+### 6. 数据库初始化
+```bash
+# 重置数据库架构
+npx prisma migrate reset --force
+
+# 生成Prisma客户端
+npx prisma generate
+
+# 验证数据库连接
+npx prisma db push
+```
+
+### 7. 初始化用户和权限
+```bash
+# 创建管理员用户
+node scripts/ensure-admin-user.js
+
+# 初始化权限系统
+node scripts/init-permissions.js
+
+# 初始化超级管理员
+node scripts/init-super-admin.ts
+```
+
+### 8. 初始化预设模型
+```bash
+# 初始化预设模型数据
+node scripts/init-preset-models.js
+```
+
+### 9. 构建和启动应用
+```bash
+# 构建应用
+npm run build
+
+# 启动生产服务器
+npm start
+
+# 或者启动开发模式
+npm run dev
+```
+
+### 10. 验证部署
+```bash
+# 检查应用状态
+curl http://localhost:3000
+
+# 检查数据库连接
+curl http://localhost:5050
+
+# 查看日志
+tail -f app.log
+```
+
+## 🔍 故障排除
 
 #### 1. 端口冲突
 ```bash

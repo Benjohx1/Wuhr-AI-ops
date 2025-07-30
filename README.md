@@ -91,19 +91,7 @@
 
 ### 一键启动
 
-#### 🚀 快速部署（推荐）
-
-**国内用户一键部署:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/st-lzh/wuhr-ai-ops/main/deploy-zh.sh | bash
-```
-
-**国外用户一键部署:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/st-lzh/wuhr-ai-ops/main/deploy-en.sh | bash
-```
-
-#### 📦 手动克隆部署
+#### 📦 克隆部署
 
 ```bash
 # 克隆项目

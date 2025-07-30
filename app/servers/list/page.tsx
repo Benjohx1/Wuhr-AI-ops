@@ -215,10 +215,32 @@ const ServerListPage: React.FC = () => {
     message.success(`主机 "${updatedServer.name}" 更新成功`)
   }
 
-  // 删除主机成功回调
-  const handleDeleteServerSuccess = (deletedServerId: string) => {
-    setRealServers(prev => prev.filter(server => server.id !== deletedServerId))
-    message.success('主机删除成功')
+  // 删除主机
+  const handleDeleteServer = async (serverId: string) => {
+    try {
+      const response = await fetch(`/api/admin/servers?id=${serverId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || '删除主机失败')
+      }
+
+      const result = await response.json()
+
+      // 更新本地状态
+      setRealServers(prev => prev.filter(server => server.id !== serverId))
+      message.success(result.data?.message || '主机删除成功')
+    } catch (error) {
+      console.error('删除主机失败:', error)
+      message.error(error instanceof Error ? error.message : '删除主机失败，请重试')
+      throw error // 重新抛出错误，让调用方知道删除失败
+    }
   }
 
   // 连接测试处理
@@ -867,7 +889,7 @@ const ServerListPage: React.FC = () => {
             setEditingServer(null)
           }}
           onSuccess={handleEditServerSuccess}
-          onDelete={handleDeleteServerSuccess}
+          onDelete={handleDeleteServer}
         />
 
         {/* 主机详情模态框 */}

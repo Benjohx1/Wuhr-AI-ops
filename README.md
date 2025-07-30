@@ -1,4 +1,4 @@
-# Wuhr AI Ops 智能运维平台
+<img width="1512" height="949" alt="截屏2025-07-31 00 35 24" src="https://github.com/user-attachments/assets/0d1e2ab2-4308-445b-bef4-7cfe0e479a94" /># Wuhr AI Ops 智能运维平台
 
 <div align="center">
 
@@ -42,16 +42,19 @@
   - 快速操作面板
   - 实时数据展示
   - 资源使用统计
+<img width="1512" height="949" alt="截屏2025-07-31 00 34 53" src="https://github.com/user-attachments/assets/ff80c242-60c4-46e1-9145-c825f63adf06" />
 
 #### 🤖 AI助手
 - **功能描述**: 智能运维助手，支持自然语言交互执行运维命令
 - **主要特性**:
-  - 多模态AI模型支持（GPT-4o、Gemini等）
+  - 多模态AI模型支持（GPT-4o、deepseek等）
   - K8s集群和Linux系统模式智能切换
   - 快捷命令面板（系统监控、进程分析、存储管理等）
-  - 远程主机命令执行
+  - 远程主机命令执行，kubelet-wuhrai命令检测，没有安装会自动安装
   - 会话历史管理
   - 实时命令执行反馈
+  <img width="1512" height="949" alt="截屏2025-07-31 00 35 10" src="https://github.com/user-attachments/assets/3232f58d-c4e2-4c7e-be4e-91b25fa12519" />
+
 
 #### 🖥️ 主机管理
 - **功能描述**: 统一管理本地和远程服务器资源
@@ -61,6 +64,7 @@
   - 批量主机操作
   - 连接认证管理
   - 主机分组管理
+<img width="1512" height="949" alt="截屏2025-07-31 00 36 09" src="https://github.com/user-attachments/assets/41838a1d-4b04-4c8d-aa85-288c60484652" />
 
 #### 👥 用户管理
 - **功能描述**: 完整的用户权限管理系统
@@ -72,7 +76,8 @@
   - 用户注册审批机制
   - 细粒度权限控制
   - 操作审计日志
-  - 实时通知推送
+  - 实时通知
+    <img width="1512" height="949" alt="截屏2025-07-31 00 35 24" src="https://github.com/user-attachments/assets/54131833-1ea9-40f9-854d-6b182d13ea31" />
 
 #### 🚀 CI/CD管理
 - **功能描述**: 完整的持续集成和持续部署解决方案
@@ -87,6 +92,7 @@
   - 多环境部署支持
   - 审批工作流
   - 部署回滚机制
+<img width="1512" height="949" alt="截屏2025-07-31 00 36 18" src="https://github.com/user-attachments/assets/63fb8237-e3f0-4334-9e5f-3cef255428cd" />
 
 #### ⚙️ 模型管理
 - **功能描述**: AI模型配置和API管理
@@ -98,6 +104,9 @@
   - API密钥管理
   - 模型性能测试
   - 使用统计分析
+<img width="1512" height="949" alt="截屏2025-07-31 00 35 38" src="https://github.com/user-attachments/assets/498cf1ba-6284-4355-b560-e0cdef530f28" />
+<img width="1512" height="949" alt="截屏2025-07-31 00 35 52" src="https://github.com/user-attachments/assets/d27e490a-127a-491d-9124-17d6ff979400" />
+
 
 #### 🔗 接入管理
 - **功能描述**: 第三方系统集成和监控配置
@@ -109,6 +118,8 @@
   - 自定义监控面板
   - 告警规则配置
   - 数据可视化
+<img width="1512" height="949" alt="截屏2025-07-31 00 36 24" src="https://github.com/user-attachments/assets/f1542c91-c14a-4462-90f8-b7a8623458ea" />
+<img width="1512" height="949" alt="截屏2025-07-31 00 36 29" src="https://github.com/user-attachments/assets/3be99a5b-a041-4468-afd0-ed78ff725f70" />
 
 #### 🛠️ 工具箱
 - **功能描述**: 常用运维工具集合
@@ -130,17 +141,6 @@
 > - CI/CD流水线配置
 > - 监控告警设置
 > - 权限管理最佳实践
-
-### 🖼️ 界面截图
-
-> **📷 系统界面预览**
->
-> 高清界面截图正在整理中，将展示：
-> - 主要功能模块界面
-> - AI助手交互界面
-> - 监控面板展示
-> - 配置管理界面
-> - 移动端适配效果
 
 </details>
 

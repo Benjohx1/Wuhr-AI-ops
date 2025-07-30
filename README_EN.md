@@ -94,21 +94,45 @@ cd Wuhr-AI-ops
 ### Manual Deployment
 
 ```bash
-# Configure environment variables
+# 1. Environment preparation
+git clone https://github.com/st-lzh/wuhr-ai-ops.git
+cd wuhr-ai-ops
+
+# 2. Configure environment variables
 cp .env.example .env
 # Edit .env file to configure database and AI API keys
 
-# Install dependencies
+# 3. Configure npm registry (for Chinese users)
+npm config set registry https://registry.npmmirror.com/
+
+# 4. Download kubelet-wuhrai tool
+wget -O kubelet-wuhrai https://wuhrai-wordpress.oss-cn-hangzhou.aliyuncs.com/kubelet-wuhrai
+chmod +x kubelet-wuhrai
+
+# 5. Start database services
+docker-compose up -d postgres redis pgadmin
+sleep 30
+
+# 6. Install dependencies
 npm install
 
-# Start Docker services
-docker-compose up -d
-
-# Database migration
-npx prisma migrate deploy
+# 7. Database initialization
+npx prisma migrate reset --force
 npx prisma generate
+npx prisma db push
 
-# Start application
+# 8. Initialize users and permissions
+node scripts/ensure-admin-user.js
+node scripts/init-permissions.js
+node scripts/init-super-admin.ts
+
+# 9. Initialize preset models
+node scripts/init-preset-models.js
+
+# 10. Initialize ELK templates
+node scripts/init-elk-templates.js
+
+# 11. Build and start application
 npm run build
 npm start
 ```

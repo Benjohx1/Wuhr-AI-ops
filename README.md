@@ -107,21 +107,45 @@ cd wuhr-ai-ops
 ### 手动部署
 
 ```bash
-# 配置环境变量
+# 1. 环境准备
+git clone https://github.com/st-lzh/wuhr-ai-ops.git
+cd wuhr-ai-ops
+
+# 2. 配置环境变量
 cp .env.example .env
 # 编辑 .env 文件，配置数据库和AI API密钥
 
-# 安装依赖
+# 3. 配置npm镜像源（国内用户）
+npm config set registry https://registry.npmmirror.com/
+
+# 4. 下载kubelet-wuhrai工具
+wget -O kubelet-wuhrai https://wuhrai-wordpress.oss-cn-hangzhou.aliyuncs.com/kubelet-wuhrai
+chmod +x kubelet-wuhrai
+
+# 5. 启动数据库服务
+docker-compose up -d postgres redis pgadmin
+sleep 30
+
+# 6. 安装依赖
 npm install
 
-# 启动Docker服务
-docker-compose up -d
-
-# 数据库迁移
-npx prisma migrate deploy
+# 7. 数据库初始化
+npx prisma migrate reset --force
 npx prisma generate
+npx prisma db push
 
-# 启动应用
+# 8. 初始化用户和权限
+node scripts/ensure-admin-user.js
+node scripts/init-permissions.js
+node scripts/init-super-admin.ts
+
+# 9. 初始化预设模型
+node scripts/init-preset-models.js
+
+# 10. 初始化ELK模板
+node scripts/init-elk-templates.js
+
+# 11. 构建和启动应用
 npm run build
 npm start
 ```

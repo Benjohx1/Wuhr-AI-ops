@@ -446,8 +446,8 @@ initialize_database() {
 create_admin_user() {
     log_step "Creating admin user"
     
-    if [ -f "scripts/create-admin.js" ]; then
-        if node scripts/create-admin.js; then
+    if [ -f "scripts/ensure-admin-user.js" ]; then
+        if node scripts/ensure-admin-user.js; then
             log_success "Admin user creation completed"
         else
             log_warning "Admin user creation failed, may already exist"

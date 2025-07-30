@@ -441,8 +441,8 @@ initialize_database() {
 create_admin_user() {
     log_step "创建管理员用户"
     
-    if [ -f "scripts/create-admin.js" ]; then
-        if node scripts/create-admin.js; then
+    if [ -f "scripts/ensure-admin-user.js" ]; then
+        if node scripts/ensure-admin-user.js; then
             log_success "管理员用户创建完成"
         else
             log_warning "管理员用户创建失败，可能已存在"

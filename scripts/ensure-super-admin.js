@@ -37,10 +37,7 @@ async function ensureSuperAdmin() {
           email: superAdminEmail,
           password: hashedPassword,
           role: 'admin',
-          permissions: [
-            'users:read', 'users:write', 'users:delete',
-            'cicd:all', 'servers:all', 'config:all', '*'
-          ],
+          permissions: ['*'], // 所有权限
           isActive: true,
           approvalStatus: 'approved'
         }
@@ -55,10 +52,7 @@ async function ensureSuperAdmin() {
         where: { email: superAdminEmail },
         data: {
           role: 'admin',
-          permissions: [
-            'users:read', 'users:write', 'users:delete',
-            'cicd:all', 'servers:all', 'config:all', '*'
-          ],
+          permissions: ['*'], // 所有权限
           isActive: true,
           approvalStatus: 'approved'
         }

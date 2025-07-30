@@ -13,18 +13,7 @@ English | [简体中文](./README.md)
 
 </div>
 
-## 📋 Table of Contents
 
-- [Introduction](#introduction)
-- [Features](#features)
-- [Technology Stack](#technology-stack)
-- [Quick Start](#quick-start)
-- [Deployment Guide](#deployment-guide)
-- [User Guide](#user-guide)
-- [API Documentation](#api-documentation)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
 
 ## 🎯 Introduction
 

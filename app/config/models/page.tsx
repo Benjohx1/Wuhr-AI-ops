@@ -79,7 +79,8 @@ export default function ModelsPage() {
     { id: 'deepseek', name: 'DeepSeek', color: '#1890FF' },
     { id: 'gemini', name: 'Google Gemini', color: '#4285F4' },
     { id: 'qwen', name: 'Qwen', color: '#FF6B35' },
-    { id: 'doubao', name: 'Doubao', color: '#722ED1' }
+    { id: 'doubao', name: 'Doubao', color: '#722ED1' },
+    { id: 'local-deployment', name: 'Local Deployment', color: '#52C41A' }
   ]
 
   // 获取模型配置列表
@@ -215,11 +216,19 @@ export default function ModelsPage() {
 
   // 处理提供商选择变化
   const handleProviderChange = (provider: string) => {
+    let defaultBaseUrl = undefined
+    if (provider === 'openai-compatible') {
+      defaultBaseUrl = 'https://api.openai.com/v1'
+    } else if (provider === 'local-deployment') {
+      defaultBaseUrl = 'http://localhost:8000/v1'
+    }
+
     form.setFieldsValue({
       provider,
       modelName: '',
       displayName: '',
-      baseUrl: provider === 'openai-compatible' ? 'https://api.openai.com/v1' : undefined
+      baseUrl: defaultBaseUrl,
+      apiKey: provider === 'local-deployment' ? '' : undefined
     })
     // 获取该提供商的预设模型
     fetchPresetModels(provider)
@@ -247,14 +256,20 @@ export default function ModelsPage() {
   }
 
   // 处理预设模型选择
-  const handlePresetModelSelect = (presetModelId: string) => {
-    const presetModel = presetModels.find(model => model.id === presetModelId)
-    
+  const handlePresetModelSelect = (value: string) => {
+    const presetModel = presetModels.find(model => model.id === value)
+
     if (presetModel) {
+      // 选择了预设模型
       form.setFieldsValue({
         modelName: presetModel.name,
         displayName: presetModel.displayName,
         description: presetModel.description
+      })
+    } else {
+      // 直接输入的模型名称
+      form.setFieldsValue({
+        modelName: value
       })
     }
   }
@@ -474,28 +489,44 @@ export default function ModelsPage() {
                 <Form.Item
                   name="modelName"
                   label="预设模型"
-                  rules={[{ required: true, message: '请选择或输入模型名称' }]}
+                  rules={[{
+                    required: true,
+                    message: '请选择或输入模型名称'
+                  }]}
                 >
-                  <Select
-                    placeholder="选择预设模型或自定义输入"
-                    showSearch
-                    allowClear
-                    onChange={handlePresetModelSelect}
-                    filterOption={(input, option) => {
-                      const label = option?.label || option?.children || '';
-                      return String(label).toLowerCase().includes(input.toLowerCase());
-                    }}
-                  >
-                    {presetModels.map(model => (
-                      <Option key={model.id} value={model.id}>
-                        <div>
-                          <div className="font-medium">{model.displayName}</div>
-                          <div className="text-xs text-gray-500">{model.name}</div>
-                          <div className="text-xs text-gray-400">{model.description}</div>
-                        </div>
-                      </Option>
-                    ))}
-                  </Select>
+                  {presetModels.length > 0 ? (
+                    <Select
+                      placeholder="选择预设模型"
+                      showSearch
+                      allowClear
+                      onChange={handlePresetModelSelect}
+                      filterOption={(input, option) => {
+                        const label = option?.label || option?.children || '';
+                        return String(label).toLowerCase().includes(input.toLowerCase());
+                      }}
+                    >
+                      {presetModels.map(model => (
+                        <Option key={model.id} value={model.name}>
+                          <div>
+                            <div className="font-medium">{model.displayName}</div>
+                            <div className="text-xs text-gray-500">{model.name}</div>
+                            <div className="text-xs text-gray-400">{model.description}</div>
+                          </div>
+                        </Option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <Input
+                      placeholder="请输入模型名称，如：IRUCAAI/Opeai_ECV2_Qwen3-8B"
+                      onChange={(e) => {
+                        const value = e.target.value
+                        form.setFieldsValue({ modelName: value })
+                        if (value) {
+                          handlePresetModelSelect(value)
+                        }
+                      }}
+                    />
+                  )}
                 </Form.Item>
               </Col>
             </Row>
@@ -514,9 +545,14 @@ export default function ModelsPage() {
                 <Form.Item
                   name="apiKey"
                   label="API密钥"
-                  rules={[{ required: true, message: '请输入API密钥' }]}
+                  rules={[{
+                    required: form.getFieldValue('provider') !== 'local-deployment',
+                    message: '请输入API密钥'
+                  }]}
                 >
-                  <Input.Password placeholder="输入API密钥" />
+                  <Input.Password
+                    placeholder={form.getFieldValue('provider') === 'local-deployment' ? '本地部署无需API密钥（可选）' : '输入API密钥'}
+                  />
                 </Form.Item>
               </Col>
             </Row>
@@ -524,7 +560,16 @@ export default function ModelsPage() {
             <Form.Item
               name="baseUrl"
               label="Base URL"
-              extra={form.getFieldValue('provider') === 'openai-compatible' ? 'OpenAI兼容服务需要自定义Base URL' : '可选，自定义API地址'}
+              extra={
+                <div className="space-y-1">
+                  <div className="text-gray-500">
+                    {form.getFieldValue('provider') === 'openai-compatible' ? 'OpenAI兼容服务需要自定义Base URL' : '可选，自定义API地址'}
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    填写规则：https://api.deepseek.com/v1 需要带v1后缀
+                  </div>
+                </div>
+              }
             >
               <Input placeholder={form.getFieldValue('provider') === 'openai-compatible' ? 'https://api.openai.com/v1' : '可选，自定义API地址'} />
             </Form.Item>

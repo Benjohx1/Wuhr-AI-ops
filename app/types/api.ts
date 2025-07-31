@@ -1,7 +1,7 @@
 // API 相关类型定义
 
 // 提供商类型 - 与kubelet-wuhrai完全匹配
-export type ProviderType = 'deepseek' | 'openai-compatible' | 'gemini' | 'qwen' | 'doubao'
+export type ProviderType = 'deepseek' | 'openai-compatible' | 'gemini' | 'qwen' | 'doubao' | 'local-deployment'
 
 // API 提供商配置
 export interface ApiProvider {

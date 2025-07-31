@@ -16,39 +16,53 @@ import {
 
 
 // 直接执行kubelet-wuhrai的函数
-async function executeKubeletWuhrai(request: KubeletWuhraiRequest): Promise<{ success: boolean; response?: string; error?: string }> {
+async function executeKubeletWuhrai(request: KubeletWuhraiRequest): Promise<{
+  success: boolean;
+  response?: string;
+  error?: string;
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+  executionTime?: number;
+}> {
   return new Promise((resolve) => {
-    const kubeletWuhraiPath = 'kubelet-wuhrai' // 使用全局命令
+    const startTime = Date.now()
+    const kubeletWuhraiPath = 'kubelet-wuhrai' // 使用PATH中的命令
     const timeout = 120000 // 120秒超时
 
-    // 构建环境变量 - 使用正确的环境变量名
-    const env = {
-      OPENAI_API_KEY: request.apiKey,
-      OPENAI_API_BASE: request.baseUrl  // 使用正确的环境变量名
-    }
+    // 使用传入的模型配置构建环境变量
+    const envVars = buildEnvironmentVariables(
+      request.model || 'deepseek-chat',
+      request.apiKey || '',
+      request.baseUrl,
+      request.provider
+    )
 
-    // 构建命令参数 - 完全匹配工作的手动命令
-    const args = [
-      '--llm-provider', 'openai',
-      '--model', 'gpt-4o',
-      '--quiet',
-      '--skip-verify-ssl',
-      '--skip-permissions',
-      request.message // 用户消息作为位置参数
-    ]
+    // 构建kubelet-wuhrai命令参数
+    const args = generateKubeletArgs(
+      request.model || 'deepseek-chat',
+      true, // 使用quiet模式
+      request.provider
+    )
 
-    const fullEnv = { ...process.env, ...env }
+    // 添加其他必要参数
+    args.push('--skip-verify-ssl', '--skip-permissions')
+
+    // 用户消息作为位置参数
+    args.push(request.message)
+
+    const fullEnv = { ...process.env, ...envVars }
 
     // 构建完整的命令字符串用于调试
-    const envString = Object.entries(env).map(([k, v]) => `${k}="${v}"`).join(' ')
+    const envString = Object.entries(envVars).map(([k, v]) => `${k}="${v}"`).join(' ')
     const fullCommand = `${envString} ${kubeletWuhraiPath} ${args.join(' ')}`
 
     console.log('🚀 执行 kubelet-wuhrai:', {
       path: kubeletWuhraiPath,
+      model: request.model,
+      provider: request.provider,
       args: args,
       hasApiKey: !!request.apiKey,
       hasBaseUrl: !!request.baseUrl,
-      env: env,
+      envVars: Object.keys(envVars),
       message: request.message.substring(0, 100) + '...',
       messageLength: request.message.length,
       fullCommand: fullCommand.substring(0, 200) + '...',
@@ -57,26 +71,72 @@ async function executeKubeletWuhrai(request: KubeletWuhraiRequest): Promise<{ su
 
     // 验证环境变量
     console.log('🔍 环境变量验证:', {
-      OPENAI_API_KEY: fullEnv.OPENAI_API_KEY ? `${fullEnv.OPENAI_API_KEY.substring(0, 10)}...` : 'MISSING',
-      OPENAI_API_BASE: fullEnv.OPENAI_API_BASE || 'MISSING'
+      envVars: Object.keys(envVars),
+      hasApiKey: Object.values(envVars).some(v => v && v.length > 0),
+      baseUrl: request.baseUrl || 'NONE'
     })
 
-    // 执行kubelet-wuhrai命令 - 完全匹配工作的手动命令结构
+    // 检查kubelet-wuhrai是否可用
+    console.log('🔍 检查kubelet-wuhrai可用性:', {
+      path: kubeletWuhraiPath,
+      args: args.slice(0, -1), // 不显示完整消息
+      env: Object.keys(envVars)
+    })
+
+    // 执行kubelet-wuhrai命令 - 使用shell执行以确保PATH解析
     const child = spawn(kubeletWuhraiPath, args, {
       stdio: ['ignore', 'pipe', 'pipe'], // ignore stdin, pipe stdout/stderr
       env: fullEnv,
       cwd: process.cwd(),
-      shell: false,
+      shell: true, // 使用shell执行以确保PATH解析
       detached: false,
       windowsHide: true // 隐藏窗口（如果在Windows上）
     })
 
-    if (!child.pid) {
-      console.log('❌ 进程启动失败')
-      resolve({
-        success: false,
-        error: '进程启动失败'
+    let stdout = ''
+    let stderr = ''
+    let isResolved = false
+
+    // 添加错误处理
+    child.on('error', (error) => {
+      const nodeError = error as NodeJS.ErrnoException
+      console.error('❌ kubelet-wuhrai spawn错误:', {
+        error: error.message,
+        code: nodeError.code,
+        errno: nodeError.errno,
+        syscall: nodeError.syscall,
+        path: nodeError.path
       })
+
+      if (!isResolved) {
+        isResolved = true
+        clearTimeout(timer)
+
+        let errorMessage = `kubelet-wuhrai执行失败: ${error.message}`
+
+        if (nodeError.code === 'ENOENT') {
+          errorMessage = `kubelet-wuhrai命令未找到。请确保：
+1. kubelet-wuhrai已正确安装到系统PATH中
+2. 可以在终端中直接运行 'kubelet-wuhrai --version' 命令
+3. 如果使用自定义安装路径，请确保已添加到PATH环境变量`
+        }
+
+        resolve({
+          success: false,
+          error: errorMessage
+        })
+      }
+    })
+
+    if (!child.pid) {
+      console.log('❌ 进程启动失败 - 无PID')
+      if (!isResolved) {
+        isResolved = true
+        resolve({
+          success: false,
+          error: 'kubelet-wuhrai进程启动失败 - 无法获取进程ID'
+        })
+      }
       return
     }
 
@@ -94,10 +154,6 @@ async function executeKubeletWuhrai(request: KubeletWuhraiRequest): Promise<{ su
     child.on('exit', (code, signal) => {
       console.log('🚪 进程已退出:', { code, signal, timestamp: new Date().toISOString() })
     })
-
-    let stdout = ''
-    let stderr = ''
-    let isResolved = false
 
     // 设置超时
     const timer = setTimeout(() => {
@@ -188,9 +244,19 @@ async function executeKubeletWuhrai(request: KubeletWuhraiRequest): Promise<{ su
       if (code === 0 && cleanStdout && !hasKubectlError) {
         console.log('✅ kubelet-wuhrai 执行成功，响应长度:', cleanStdout.length)
         console.log('📨 AI回复预览:', cleanStdout.substring(0, 200))
+
+        // 估算token使用量
+        const estimatedUsage = {
+          promptTokens: Math.ceil(request.message.length / 4),
+          completionTokens: Math.ceil(cleanStdout.length / 4),
+          totalTokens: Math.ceil((request.message.length + cleanStdout.length) / 4)
+        }
+
         resolve({
           success: true,
-          response: cleanStdout
+          response: cleanStdout,
+          usage: estimatedUsage,
+          executionTime: Date.now() - startTime
         })
       } else if (hasKubectlError) {
         console.log('⚠️ kubelet-wuhrai kubectl命令解析错误')
@@ -200,9 +266,45 @@ async function executeKubeletWuhrai(request: KubeletWuhraiRequest): Promise<{ su
         })
       } else {
         console.log('❌ kubelet-wuhrai 执行失败:', { code, cleanStderr })
+
+        let errorMessage = cleanStderr || `进程退出码: ${code}`
+
+        // 特殊处理常见错误
+        if (cleanStderr.includes('cannot execute binary file')) {
+          errorMessage = `kubelet-wuhrai二进制文件无法执行。可能原因：
+1. 二进制文件损坏或不兼容当前系统架构
+2. 文件权限不足，请检查执行权限
+3. 请重新下载并安装kubelet-wuhrai
+4. 确保下载的版本与当前系统架构匹配（x86_64/arm64）`
+        } else if (code === 127) {
+          errorMessage = `kubelet-wuhrai命令未找到（退出码127）。请确保：
+1. kubelet-wuhrai已正确安装
+2. 命令在系统PATH中可用
+3. 可以在终端中运行 'which kubelet-wuhrai' 检查安装位置`
+        } else if (cleanStderr.includes('400 Bad Request') || cleanStderr.includes('HTTP 400')) {
+          errorMessage = `API调用失败（400错误）。可能原因：
+1. API密钥无效或格式错误
+2. 模型名称不被API服务支持
+3. 请求参数格式不正确
+4. Base URL配置错误
+详细错误：${cleanStderr}`
+        } else if (cleanStderr.includes('401') || cleanStderr.includes('Unauthorized')) {
+          errorMessage = `API认证失败（401错误）。请检查：
+1. API密钥是否正确
+2. API密钥是否有效且未过期
+3. API密钥权限是否足够
+详细错误：${cleanStderr}`
+        } else if (cleanStderr.includes('connection refused') || cleanStderr.includes('connect: connection refused')) {
+          errorMessage = `无法连接到API服务。请检查：
+1. Base URL是否正确：${request.baseUrl || '未设置'}
+2. 服务是否正在运行
+3. 网络连接是否正常
+4. 防火墙设置是否阻止连接`
+        }
+
         resolve({
           success: false,
-          error: cleanStderr || `进程退出码: ${code}`
+          error: errorMessage
         })
       }
     })
@@ -322,8 +424,17 @@ export async function POST(request: NextRequest) {
     }
 
     // 验证配置完整性
+    console.log('🔍 验证模型配置:', {
+      model: finalModel,
+      hasApiKey: !!finalApiKey,
+      apiKeyLength: finalApiKey?.length || 0,
+      baseUrl: finalBaseUrl,
+      provider: provider
+    })
+
     const validation = validateModelConfig(finalModel, finalApiKey, finalBaseUrl)
     if (!validation.valid) {
+      console.error('❌ 模型配置验证失败:', validation.errors)
       return NextResponse.json(
         {
           success: false,
@@ -333,6 +444,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    console.log('✅ 模型配置验证通过')
 
     console.log('📨 System Chat 请求:', {
       messageLength: message.length,
@@ -447,6 +560,13 @@ export async function POST(request: NextRequest) {
           throw new Error(remoteResult.error || '远程执行失败')
         }
 
+        // 估算token使用量（如果远程API没有返回）
+        const estimatedTokenUsage = remoteResult.usage || {
+          promptTokens: Math.ceil(message.length / 4),
+          completionTokens: Math.ceil((remoteResult.response || '').length / 4),
+          totalTokens: Math.ceil((message.length + (remoteResult.response || '').length) / 4)
+        }
+
         // 返回远程执行结果
         return NextResponse.json({
           success: true,
@@ -457,6 +577,7 @@ export async function POST(request: NextRequest) {
           hostId: remoteResult.hostId,
           hostName: remoteResult.hostName,
           hostInfo: remoteResult.hostInfo,
+          usage: estimatedTokenUsage, // 添加token使用统计
           executionTime: remoteResult.executionTime,
           timestamp: remoteResult.timestamp
         })
@@ -536,6 +657,13 @@ export async function POST(request: NextRequest) {
           throw new Error(result.error || 'kubelet-wuhrai调用失败')
         }
 
+        // 估算token使用量（如果kubelet-wuhrai没有返回）
+        const estimatedTokenUsage = result.usage || {
+          promptTokens: Math.ceil(message.length / 4), // 粗略估算：4字符=1token
+          completionTokens: Math.ceil((result.response || '').length / 4),
+          totalTokens: Math.ceil((message.length + (result.response || '').length) / 4)
+        }
+
         const responseData = {
           success: true,
           response: `🏠 [本地执行] ${result.response || '处理完成'}`,
@@ -543,6 +671,8 @@ export async function POST(request: NextRequest) {
           provider: provider,
           executionMode: 'local',
           hostId: 'local',
+          usage: estimatedTokenUsage, // 添加token使用统计
+          executionTime: result.executionTime,
           timestamp: new Date().toISOString(),
         }
 

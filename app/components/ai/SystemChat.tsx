@@ -1219,6 +1219,17 @@ const SystemChat: React.FC = () => {
                     />
                   </div>
 
+                  {/* 本地执行模式状态提示 */}
+                  {hostConfig.executionMode === 'local' && (
+                    <div className="space-y-3">
+                      <div className="p-2 border border-blue-500/30 rounded">
+                        <Text className="text-blue-400 text-xs">
+                          ✓ 确认当前目录的命令工具kubelet-wuhrai命令在全局可执行
+                        </Text>
+                      </div>
+                    </div>
+                  )}
+
                   {/* 远程主机配置 */}
                   {hostConfig.executionMode === 'remote' && (
                     <div className="space-y-3 p-3 rounded-lg">

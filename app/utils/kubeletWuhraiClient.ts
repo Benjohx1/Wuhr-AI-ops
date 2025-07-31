@@ -245,7 +245,8 @@ export class KubeletWuhraiClient {
         'doubao': [
           'doubao-pro-4k',
           'doubao-lite-4k'
-        ]
+        ],
+        'local-deployment': []
       }
 
       return modelsByProvider[provider] || []

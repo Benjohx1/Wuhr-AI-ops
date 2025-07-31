@@ -23,12 +23,17 @@ LOG_FILE="$PROJECT_DIR/install.log"
 
 # 国内镜像源配置
 DOCKER_MIRRORS=(
+    "https://registry.cn-hangzhou.aliyuncs.com"
     "https://docker.mirrors.ustc.edu.cn"
     "https://hub-mirror.c.163.com"
     "https://mirror.baidubce.com"
 )
 NPM_REGISTRY="https://registry.npmmirror.com"
 NODE_MIRROR="https://npmmirror.com/mirrors/node"
+# PostgreSQL国内镜像源
+POSTGRES_MIRROR="https://mirrors.tuna.tsinghua.edu.cn/postgresql"
+# Python包镜像源
+PIP_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple"
 KUBELET_DOWNLOAD_URLS=(
     "https://wuhrai-wordpress.oss-cn-hangzhou.aliyuncs.com/kubelet-wuhrai"
     "https://gitee.com/st-lzh/kubelet-wuhrai/releases/latest/download/kubelet-wuhrai"
@@ -125,24 +130,49 @@ check_network() {
 # 安装系统依赖
 install_system_dependencies() {
     log_step "安装系统依赖"
-    
+
     # 更新软件包列表
     log_info "更新软件包列表..."
     if command -v apt-get &> /dev/null; then
         sudo apt-get update -y
-        sudo apt-get install -y curl wget gnupg lsb-release ca-certificates software-properties-common
+        sudo apt-get install -y curl wget gnupg lsb-release ca-certificates software-properties-common \
+            build-essential python3-dev libpq-dev pkg-config
     elif command -v yum &> /dev/null; then
         sudo yum update -y
-        sudo yum install -y curl wget gnupg2 ca-certificates
+        sudo yum install -y curl wget gnupg2 ca-certificates \
+            gcc gcc-c++ make python3-devel postgresql-devel pkgconfig
     elif command -v dnf &> /dev/null; then
         sudo dnf update -y
-        sudo dnf install -y curl wget gnupg2 ca-certificates
+        sudo dnf install -y curl wget gnupg2 ca-certificates \
+            gcc gcc-c++ make python3-devel postgresql-devel pkgconf-pkg-config
     else
         log_error "不支持的Linux发行版"
         exit 1
     fi
-    
+
     log_success "系统依赖安装完成"
+}
+
+# 配置PostgreSQL客户端工具
+configure_postgresql_client() {
+    log_step "配置PostgreSQL客户端工具"
+
+    # 安装PostgreSQL客户端
+    if command -v apt-get &> /dev/null; then
+        # 使用清华大学镜像源
+        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+        echo "deb https://mirrors.tuna.tsinghua.edu.cn/postgresql/repos/apt/ $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client-15
+    elif command -v yum &> /dev/null; then
+        sudo yum install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+        sudo yum install -y postgresql15
+    elif command -v dnf &> /dev/null; then
+        sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/F-36-x86_64/pgdg-fedora-repo-latest.noarch.rpm
+        sudo dnf install -y postgresql15
+    fi
+
+    log_success "PostgreSQL客户端配置完成"
 }
 
 # 配置Docker国内镜像源
@@ -156,7 +186,8 @@ configure_docker_daemon() {
     "registry-mirrors": [
         "${DOCKER_MIRRORS[0]}",
         "${DOCKER_MIRRORS[1]}",
-        "${DOCKER_MIRRORS[2]}"
+        "${DOCKER_MIRRORS[2]}",
+        "${DOCKER_MIRRORS[3]}"
     ],
     "log-driver": "json-file",
     "log-opts": {
@@ -278,10 +309,24 @@ install_nodejs() {
 # 配置npm国内镜像源
 configure_npm_mirrors() {
     log_step "配置npm国内镜像源"
-    
+
     npm config set registry $NPM_REGISTRY
     npm config set cache ~/.npm-cache
-    
+
+    # 配置node-gyp使用国内镜像
+    npm config set disturl https://npmmirror.com/mirrors/node
+    npm config set sass_binary_site https://npmmirror.com/mirrors/node-sass
+    npm config set electron_mirror https://npmmirror.com/mirrors/electron/
+    npm config set puppeteer_download_host https://npmmirror.com/mirrors
+    npm config set chromedriver_cdnurl https://npmmirror.com/mirrors/chromedriver
+    npm config set operadriver_cdnurl https://npmmirror.com/mirrors/operadriver
+    npm config set phantomjs_cdnurl https://npmmirror.com/mirrors/phantomjs
+    npm config set selenium_cdnurl https://npmmirror.com/mirrors/selenium
+    npm config set node_inspector_cdnurl https://npmmirror.com/mirrors/node-inspector
+
+    # 配置Python相关镜像源（用于node-gyp编译）
+    npm config set python_mirror https://npmmirror.com/mirrors/python
+
     log_success "npm国内镜像源配置完成"
     log_info "当前npm源: $(npm config get registry)"
 }
@@ -362,16 +407,46 @@ initialize_project_config() {
 # 安装项目依赖
 install_project_dependencies() {
     log_step "安装项目依赖"
-    
+
     log_info "清理npm缓存..."
     npm cache clean --force
-    
+
+    # 设置环境变量确保使用国内镜像
+    export SASS_BINARY_SITE=https://npmmirror.com/mirrors/node-sass
+    export ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+    export PUPPETEER_DOWNLOAD_HOST=https://npmmirror.com/mirrors
+    export CHROMEDRIVER_CDNURL=https://npmmirror.com/mirrors/chromedriver
+    export PYTHON_MIRROR=https://npmmirror.com/mirrors/python
+
     log_info "安装依赖包..."
-    if npm install --registry=$NPM_REGISTRY --verbose; then
+    # 使用更详细的日志和重试机制
+    if npm install --registry=$NPM_REGISTRY --verbose --no-optional --prefer-offline; then
         log_success "项目依赖安装完成"
     else
-        log_error "项目依赖安装失败"
-        exit 1
+        log_warning "首次安装失败，尝试清理并重新安装..."
+        rm -rf node_modules package-lock.json
+        npm cache clean --force
+
+        if npm install --registry=$NPM_REGISTRY --verbose --no-optional; then
+            log_success "项目依赖重新安装完成"
+        else
+            log_error "项目依赖安装失败"
+            log_info "尝试使用yarn安装..."
+
+            # 尝试使用yarn
+            if command -v yarn &> /dev/null; then
+                yarn config set registry $NPM_REGISTRY
+                if yarn install; then
+                    log_success "使用yarn安装依赖完成"
+                else
+                    log_error "yarn安装也失败"
+                    exit 1
+                fi
+            else
+                log_error "npm和yarn都安装失败，请检查网络连接"
+                exit 1
+            fi
+        fi
     fi
 }
 
@@ -613,7 +688,10 @@ main() {
     
     # 安装系统依赖
     install_system_dependencies
-    
+
+    # 配置PostgreSQL客户端
+    configure_postgresql_client
+
     # 安装Docker
     install_docker
     

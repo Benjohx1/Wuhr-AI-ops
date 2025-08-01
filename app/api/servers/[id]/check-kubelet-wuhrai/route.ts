@@ -228,10 +228,11 @@ export async function GET(
         stderr: checkResult.stderr
       })
 
-      // 严格检查：命令必须存在且返回有效路径
-      if (checkResult.success && checkResult.code === 0 && checkResult.stdout.trim() && checkResult.stdout.includes('kubelet-wuhrai')) {
+      // 检查命令是否存在：只有退出码为0且输出包含kubelet-wuhrai路径才算安装
+      if (checkResult.code === 0 && checkResult.stdout.trim() && checkResult.stdout.includes('kubelet-wuhrai')) {
         kubeletStatus = 'installed'
         const kubeletPath = checkResult.stdout.trim()
+        console.log('✅ kubelet-wuhrai已安装:', kubeletPath)
         recommendations.push({
           type: 'success',
           message: `kubelet-wuhrai命令已找到: ${kubeletPath}`
@@ -273,6 +274,7 @@ export async function GET(
 
       } else {
         kubeletStatus = 'not_installed'
+        console.log('❌ kubelet-wuhrai未安装，开始自动下载安装流程')
         recommendations.push({
           type: 'error',
           message: 'kubelet-wuhrai命令未找到，正在尝试自动下载安装...'

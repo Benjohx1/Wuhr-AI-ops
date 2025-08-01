@@ -138,9 +138,8 @@ export async function POST(request: NextRequest) {
         stderr: kubeletCheckResult.stderr
       })
 
-      // 严格检查：命令必须存在且能正常执行版本命令
-      if (kubeletCheckResult.success && kubeletCheckResult.code === 0 &&
-          kubeletCheckResult.stdout.includes('kubelet-wuhrai')) {
+      // 检查命令是否存在且能正常执行版本命令
+      if (kubeletCheckResult.code === 0 && kubeletCheckResult.stdout.includes('kubelet-wuhrai')) {
         response.checks.kubeletWuhraiAvailable = true
         console.log('✅ [健康检查API] kubelet-wuhrai可用')
         
@@ -231,7 +230,7 @@ export async function GET(request: NextRequest) {
           return {
             hostId: server.id,
             hostName: server.name,
-            available: result.success && result.code === 0 && result.stdout?.includes('kubelet-wuhrai') && result.stdout?.includes('OK')
+            available: result.code === 0 && result.stdout?.includes('kubelet-wuhrai') && result.stdout?.includes('OK')
           }
         } catch {
           return {

@@ -1,9 +1,10 @@
-<img width="1512" height="949" alt="截屏2025-07-31 00 34 53" src="https://github.com/user-attachments/assets/bdfb9e4f-ff6d-49fa-b72e-fbceef8050db" />
- Wuhr AI Ops 智能运维平台
+# Wuhr AI Ops 智能运维平台
 
 <div align="center">
 
-**🚀 智能化运维管理平台 - 让AI为运维赋能**
+<img width="1512" height="949" alt="Wuhr AI Ops 智能运维平台" src="https://github.com/user-attachments/assets/bdfb9e4f-ff6d-49fa-b72e-fbceef8050db" />
+
+**🚀 基于AI驱动的现代化智能运维管理平台**
 
 [![GitHub stars](https://img.shields.io/github/stars/st-lzh/Wuhr-AI-ops?style=social)](https://github.com/st-lzh/Wuhr-AI-ops/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/st-lzh/Wuhr-AI-ops?style=social)](https://github.com/st-lzh/Wuhr-AI-ops/network/members)
@@ -40,10 +41,7 @@
 > - 监控告警设置
 > - 权限管理最佳实践
 
-## 📸 截图预览与菜单介绍
-
-<details>
-<summary>点击展开查看系统界面预览和功能介绍</summary>
+## 📸 系统界面预览与功能介绍
 
 ### 🎯 主要功能模块
 
@@ -141,8 +139,6 @@
   - 文件传输工具
   - 批量操作工具
 
-</details>
-
 ## ✨ 功能特性
 
 ### 🤖 AI智能助手
@@ -185,7 +181,7 @@
 
 ### 系统要求
 
-- **操作系统**: Linux/macOS/Windows
+- **操作系统**: Linux/macOS
 - **Node.js**: >= 18.0.0 (推荐 20.0+)
 - **npm**: >= 8.0.0 (推荐 10.0+)
 - **Docker**: >= 20.10.0
@@ -205,7 +201,7 @@ cd wuhr-ai-ops
 # 国内用户使用中文安装脚本
 ./install-zh.sh
 
-# 国外用户使用英文安装脚本  
+# 国外用户使用英文安装脚本
 ./install-en.sh
 ```
 
@@ -234,7 +230,8 @@ cp .env.example .env
 npm config set registry https://registry.npmmirror.com/
 
 # 4. 下载kubelet-wuhrai工具
-mv kubelet-wuhrai /usr/local/bin
+wget -O kubelet-wuhrai https://wuhrai-wordpress.oss-cn-hangzhou.aliyuncs.com/kubelet-wuhrai
+chmod +x kubelet-wuhrai
 
 # 5. 启动数据库服务
 docker-compose up -d postgres redis pgadmin
@@ -243,25 +240,93 @@ sleep 30
 # 6. 安装依赖
 npm install
 
-# 7. 数据库初始化
-npx prisma migrate reset --force
-npx prisma generate
-npx prisma db push
+# 7. 数据库初始化（导入完整数据）
+docker-compose exec postgres psql -U wuhr_admin -d wuhr_ai_ops -f /docker-entrypoint-initdb.d/00-init-database.sql
 
-# 8. 初始化用户和权限
-node scripts/ensure-admin-user.js
-node scripts/init-permissions.js
-node scripts/init-super-admin.ts
-
-# 9. 初始化预设模型
-node scripts/init-preset-models.js
-
-# 10. 初始化ELK模板
-node scripts/init-elk-templates.js
-
-# 11. 构建和启动应用
+# 8. 构建和启动应用
 npm run build
 npm start
+```
+
+> **📝 注意**: 手动部署已简化，只需要导入一个SQL文件即可完成数据库初始化，无需执行多个node脚本。
+
+### 🐳 Docker一键部署（推荐）
+
+#### 快速启动
+
+```bash
+# 克隆项目
+git clone https://github.com/st-lzh/wuhr-ai-ops.git
+cd wuhr-ai-ops
+
+# 一键安装和启动所有服务
+./install-docker.sh
+
+# 或者使用docker-compose直接启动
+docker-compose up -d
+```
+
+> **🚀 一键部署特性**:
+> - 自动检测和安装Docker环境
+> - 自动构建应用镜像
+> - 自动初始化数据库和数据
+> - 自动启动所有服务
+> - 包含完整的系统数据，无需额外配置
+
+#### 服务管理
+
+```bash
+# 使用管理脚本
+./docker-manage.sh
+
+# 可用命令：
+# start    - 启动服务
+# stop     - 停止服务
+# restart  - 重启服务
+# status   - 查看状态
+# logs     - 查看日志
+# clean    - 清理数据
+```
+
+#### 服务端口
+
+- **应用服务**: http://localhost:3000
+- **pgAdmin**: http://localhost:5050
+- **PostgreSQL**: localhost:5432
+- **Redis**: localhost:6379
+
+#### 系统账户
+
+系统已预配置超级管理员账户，可直接登录使用：
+
+**超级管理员账户**：
+
+| 角色 | 邮箱 | 密码 | 权限 |
+|------|------|------|------|
+| 超级管理员 | admin@wuhr.ai | Admin123! | 所有权限 |
+
+> **🔐 安全提示**: 首次登录后请及时修改默认密码，并根据需要创建其他用户账户。
+
+#### 技术特性
+
+- **基础镜像**: Ubuntu 22.04 (支持SSH客户端工具)
+- **中国镜像源**: 优化下载速度
+- **数据持久化**: Docker volumes存储
+- **健康检查**: 自动监控服务状态
+- **一键部署**: 简化部署流程
+
+#### 故障排除
+
+```bash
+# 查看服务日志
+docker-compose logs [service_name]
+
+# 重新构建镜像
+docker-compose build --no-cache
+
+# 完全清理重置
+docker-compose down -v
+docker-compose up -d
 ```
 
 ### 访问地址
@@ -302,8 +367,6 @@ tail -f app.log
 - 📱 **进程管理**：自动管理PID文件和进程清理
 - 🌐 **多IP显示**：自动显示内网和外网访问地址
 - 📝 **日志管理**：统一日志输出到app.log文件
-
-
 
 ## 📖 使用文档
 
@@ -390,21 +453,7 @@ POST /api/servers
 
 ### 开发环境设置
 
-```bash
-# Fork项目到你的GitHub账户
-# 克隆你的Fork
-git clone https://github.com/YOUR-USERNAME/Wuhr-AI-ops.git
-cd Wuhr-AI-ops
-
-# 安装依赖
-npm install
-
-# 启动开发服务器
-npm run dev
-
-# 运行测试
-npm test
-```
+请参考项目文档进行开发环境的配置和设置。
 
 ### 提交规范
 

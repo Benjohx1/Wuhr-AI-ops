@@ -64,8 +64,15 @@ async function downloadAndInstallKubeletWuhrai(sshConfig: any): Promise<{
         curl -fsSL -o /tmp/kubelet-wuhrai https://github.com/st-lzh/kubelet-wuhrai/releases/download/v1.0.0/kubelet-wuhrai && \
         chmod +x /tmp/kubelet-wuhrai && \
         sudo mv /tmp/kubelet-wuhrai /usr/local/bin/kubelet-wuhrai && \
+        # 确保/usr/local/bin在PATH中
+        if ! echo $PATH | grep -q "/usr/local/bin"; then
+          echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.bashrc
+          echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.profile
+        fi && \
+        # 创建符号链接到/usr/bin以确保全局可访问
+        sudo ln -sf /usr/local/bin/kubelet-wuhrai /usr/bin/kubelet-wuhrai 2>/dev/null || true && \
         echo "GitHub installation completed" && \
-        kubelet-wuhrai --version 2>/dev/null || echo "version_check_failed"
+        /usr/local/bin/kubelet-wuhrai --version 2>/dev/null || echo "version_check_failed"
       `
 
       downloadResult = await executeSSHCommand(sshConfig, githubDownloadCommand)
@@ -89,8 +96,15 @@ async function downloadAndInstallKubeletWuhrai(sshConfig: any): Promise<{
         curl -fsSL -o /tmp/kubelet-wuhrai https://www.wuhrai.com/download/kubelet-wuhrai && \
         chmod +x /tmp/kubelet-wuhrai && \
         sudo mv /tmp/kubelet-wuhrai /usr/local/bin/kubelet-wuhrai && \
+        # 确保/usr/local/bin在PATH中
+        if ! echo $PATH | grep -q "/usr/local/bin"; then
+          echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.bashrc
+          echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.profile
+        fi && \
+        # 创建符号链接到/usr/bin以确保全局可访问
+        sudo ln -sf /usr/local/bin/kubelet-wuhrai /usr/bin/kubelet-wuhrai 2>/dev/null || true && \
         echo "Domestic download completed" && \
-        kubelet-wuhrai --version 2>/dev/null || echo "version_check_failed"
+        /usr/local/bin/kubelet-wuhrai --version 2>/dev/null || echo "version_check_failed"
       `
 
       downloadResult = await executeSSHCommand(sshConfig, domesticDownloadCommand)
@@ -116,8 +130,15 @@ async function downloadAndInstallKubeletWuhrai(sshConfig: any): Promise<{
         curl -fsSL -o /tmp/kubelet-wuhrai https://www.wuhrai.com/download/kubelet-wuhrai && \
         chmod +x /tmp/kubelet-wuhrai && \
         sudo mv /tmp/kubelet-wuhrai /usr/local/bin/kubelet-wuhrai && \
+        # 确保/usr/local/bin在PATH中
+        if ! echo $PATH | grep -q "/usr/local/bin"; then
+          echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.bashrc
+          echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.profile
+        fi && \
+        # 创建符号链接到/usr/bin以确保全局可访问
+        sudo ln -sf /usr/local/bin/kubelet-wuhrai /usr/bin/kubelet-wuhrai 2>/dev/null || true && \
         echo "Domestic download completed" && \
-        kubelet-wuhrai --version 2>/dev/null || echo "version_check_failed"
+        /usr/local/bin/kubelet-wuhrai --version 2>/dev/null || echo "version_check_failed"
       `
       downloadResult = await executeSSHCommand(sshConfig, domesticDownloadCommand)
       installMethod = 'domestic-fallback'
@@ -127,8 +148,15 @@ async function downloadAndInstallKubeletWuhrai(sshConfig: any): Promise<{
         curl -fsSL -o /tmp/kubelet-wuhrai https://github.com/st-lzh/kubelet-wuhrai/releases/download/v1.0.0/kubelet-wuhrai && \
         chmod +x /tmp/kubelet-wuhrai && \
         sudo mv /tmp/kubelet-wuhrai /usr/local/bin/kubelet-wuhrai && \
+        # 确保/usr/local/bin在PATH中
+        if ! echo $PATH | grep -q "/usr/local/bin"; then
+          echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.bashrc
+          echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.profile
+        fi && \
+        # 创建符号链接到/usr/bin以确保全局可访问
+        sudo ln -sf /usr/local/bin/kubelet-wuhrai /usr/bin/kubelet-wuhrai 2>/dev/null || true && \
         echo "GitHub installation completed" && \
-        kubelet-wuhrai --version 2>/dev/null || echo "version_check_failed"
+        /usr/local/bin/kubelet-wuhrai --version 2>/dev/null || echo "version_check_failed"
       `
       downloadResult = await executeSSHCommand(sshConfig, githubDownloadCommand)
       installMethod = 'github-fallback'
@@ -217,9 +245,23 @@ export async function GET(
     let kubeletVersion = ''
 
     try {
-      // 检查kubelet-wuhrai是否安装 - 使用更严格的检测逻辑
+      // 检查kubelet-wuhrai是否安装 - 检查多个可能的路径
       console.log('🔍 检查kubelet-wuhrai是否安装...')
-      const checkResult = await executeSSHCommand(sshConfig, 'which kubelet-wuhrai')
+      const checkCommand = `
+        # 检查多个可能的安装路径
+        if command -v kubelet-wuhrai >/dev/null 2>&1; then
+          which kubelet-wuhrai
+        elif [ -f /usr/local/bin/kubelet-wuhrai ]; then
+          echo "/usr/local/bin/kubelet-wuhrai"
+        elif [ -f /usr/bin/kubelet-wuhrai ]; then
+          echo "/usr/bin/kubelet-wuhrai"
+        elif [ -f /usr/sbin/kubelet-wuhrai ]; then
+          echo "/usr/sbin/kubelet-wuhrai"
+        else
+          echo "not_found"
+        fi
+      `
+      const checkResult = await executeSSHCommand(sshConfig, checkCommand)
 
       console.log('📊 kubelet-wuhrai检测结果:', {
         success: checkResult.success,
@@ -228,8 +270,10 @@ export async function GET(
         stderr: checkResult.stderr
       })
 
-      // 检查命令是否存在：只有退出码为0且输出包含kubelet-wuhrai路径才算安装
-      if (checkResult.code === 0 && checkResult.stdout.trim() && checkResult.stdout.includes('kubelet-wuhrai')) {
+      // 检查命令是否存在：只有退出码为0且输出包含kubelet-wuhrai路径且不是not_found才算安装
+      if (checkResult.code === 0 && checkResult.stdout.trim() &&
+          checkResult.stdout.includes('kubelet-wuhrai') &&
+          !checkResult.stdout.includes('not_found')) {
         kubeletStatus = 'installed'
         const kubeletPath = checkResult.stdout.trim()
         console.log('✅ kubelet-wuhrai已安装:', kubeletPath)
@@ -237,6 +281,21 @@ export async function GET(
           type: 'success',
           message: `kubelet-wuhrai命令已找到: ${kubeletPath}`
         })
+
+        // 如果kubelet-wuhrai不在PATH中，添加到PATH的建议
+        if (!kubeletPath.includes('/usr/local/bin') || kubeletPath !== 'kubelet-wuhrai') {
+          try {
+            const pathCheckResult = await executeSSHCommand(sshConfig, 'echo $PATH')
+            if (!pathCheckResult.stdout.includes('/usr/local/bin')) {
+              recommendations.push({
+                type: 'warning',
+                message: '建议将/usr/local/bin添加到PATH环境变量中，以便全局访问kubelet-wuhrai命令'
+              })
+            }
+          } catch (error) {
+            console.log('检查PATH失败:', error)
+          }
+        }
 
         // 尝试获取版本信息
         try {

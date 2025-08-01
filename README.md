@@ -234,8 +234,7 @@ cp .env.example .env
 npm config set registry https://registry.npmmirror.com/
 
 # 4. 下载kubelet-wuhrai工具
-wget -O kubelet-wuhrai https://wuhrai-wordpress.oss-cn-hangzhou.aliyuncs.com/kubelet-wuhrai
-chmod +x kubelet-wuhrai
+mv kubelet-wuhrai /usr/local/bin
 
 # 5. 启动数据库服务
 docker-compose up -d postgres redis pgadmin

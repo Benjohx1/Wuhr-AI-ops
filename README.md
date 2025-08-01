@@ -129,14 +129,6 @@
 <img width="1512" height="949" alt="截屏2025-07-31 00 36 24" src="https://github.com/user-attachments/assets/f1542c91-c14a-4462-90f8-b7a8623458ea" />
 <img width="1512" height="949" alt="截屏2025-07-31 00 36 29" src="https://github.com/user-attachments/assets/3be99a5b-a041-4468-afd0-ed78ff725f70" />
 
-#### 🛠️ 工具箱
-- **功能描述**: 常用运维工具集合
-- **主要特性**:
-  - 系统诊断工具
-  - 网络测试工具
-  - 文件传输工具
-  - 批量操作工具
-
 ## 🚀 快速开始
 
 ### 系统要求

@@ -124,14 +124,23 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(response)
       }
 
-      // 2. 检查kubelet-wuhrai可用性
+      // 2. 检查kubelet-wuhrai可用性 - 使用更严格的检测逻辑
       console.log('🔍 [健康检查API] 检查kubelet-wuhrai可用性...')
       const kubeletCheckResult = await executeSSHCommand(
         sshConfig,
         'which kubelet-wuhrai && kubelet-wuhrai --version'
       )
 
-      if (kubeletCheckResult.success) {
+      console.log('📊 [健康检查API] kubelet-wuhrai检测结果:', {
+        success: kubeletCheckResult.success,
+        code: kubeletCheckResult.code,
+        stdout: kubeletCheckResult.stdout,
+        stderr: kubeletCheckResult.stderr
+      })
+
+      // 严格检查：命令必须存在且能正常执行版本命令
+      if (kubeletCheckResult.success && kubeletCheckResult.code === 0 &&
+          kubeletCheckResult.stdout.includes('kubelet-wuhrai')) {
         response.checks.kubeletWuhraiAvailable = true
         console.log('✅ [健康检查API] kubelet-wuhrai可用')
         
@@ -212,10 +221,17 @@ export async function GET(request: NextRequest) {
 
         try {
           const result = await executeSSHCommand(sshConfig, 'echo "OK" && which kubelet-wuhrai')
+          console.log(`📊 [批量健康检查] ${server.name} 检测结果:`, {
+            success: result.success,
+            code: result.code,
+            stdout: result.stdout,
+            stderr: result.stderr
+          })
+
           return {
             hostId: server.id,
             hostName: server.name,
-            available: result.success && result.stdout?.includes('kubelet-wuhrai')
+            available: result.success && result.code === 0 && result.stdout?.includes('kubelet-wuhrai') && result.stdout?.includes('OK')
           }
         } catch {
           return {

@@ -217,14 +217,24 @@ export async function GET(
     let kubeletVersion = ''
 
     try {
-      // 检查kubelet-wuhrai是否安装
+      // 检查kubelet-wuhrai是否安装 - 使用更严格的检测逻辑
+      console.log('🔍 检查kubelet-wuhrai是否安装...')
       const checkResult = await executeSSHCommand(sshConfig, 'which kubelet-wuhrai')
-      
-      if (checkResult.success && checkResult.stdout.trim()) {
+
+      console.log('📊 kubelet-wuhrai检测结果:', {
+        success: checkResult.success,
+        code: checkResult.code,
+        stdout: checkResult.stdout,
+        stderr: checkResult.stderr
+      })
+
+      // 严格检查：命令必须存在且返回有效路径
+      if (checkResult.success && checkResult.code === 0 && checkResult.stdout.trim() && checkResult.stdout.includes('kubelet-wuhrai')) {
         kubeletStatus = 'installed'
+        const kubeletPath = checkResult.stdout.trim()
         recommendations.push({
           type: 'success',
-          message: 'kubelet-wuhrai命令已找到'
+          message: `kubelet-wuhrai命令已找到: ${kubeletPath}`
         })
 
         // 尝试获取版本信息

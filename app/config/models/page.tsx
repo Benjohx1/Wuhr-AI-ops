@@ -504,13 +504,27 @@ export default function ModelsPage() {
                         const label = option?.label || option?.children || '';
                         return String(label).toLowerCase().includes(input.toLowerCase());
                       }}
+                      optionLabelProp="label"
+                      style={{ width: '100%' }}
                     >
                       {presetModels.map(model => (
-                        <Option key={model.id} value={model.name}>
-                          <div>
-                            <div className="font-medium">{model.displayName}</div>
-                            <div className="text-xs text-gray-500">{model.name}</div>
-                            <div className="text-xs text-gray-400">{model.description}</div>
+                        <Option
+                          key={model.id}
+                          value={model.name}
+                          label={model.displayName}
+                        >
+                          <div className="py-1">
+                            <div className="font-medium text-gray-900 truncate" title={model.displayName}>
+                              {model.displayName}
+                            </div>
+                            <div className="text-xs text-gray-500 truncate" title={model.name}>
+                              {model.name}
+                            </div>
+                            {model.description && (
+                              <div className="text-xs text-gray-400 truncate" title={model.description}>
+                                {model.description}
+                              </div>
+                            )}
                           </div>
                         </Option>
                       ))}

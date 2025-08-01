@@ -83,12 +83,38 @@ async function executeKubeletWuhrai(request: KubeletWuhraiRequest): Promise<{
       env: Object.keys(envVars)
     })
 
-    // 执行kubelet-wuhrai命令 - 使用shell执行以确保PATH解析
-    const child = spawn(kubeletWuhraiPath, args, {
+    // 检查kubelet-wuhrai命令是否存在
+    let actualKubeletPath = kubeletWuhraiPath
+
+    // 尝试多个可能的路径
+    const possiblePaths = [
+      'kubelet-wuhrai', // PATH中的命令
+      '/usr/local/bin/kubelet-wuhrai',
+      '/usr/bin/kubelet-wuhrai',
+      './kubelet-wuhrai',
+      process.cwd() + '/kubelet-wuhrai'
+    ]
+
+    // 简单检查kubelet-wuhrai路径（同步方式）
+    console.log('🔍 检查kubelet-wuhrai路径:', possiblePaths)
+
+    // 使用第一个可能的路径（kubelet-wuhrai）
+    // 如果PATH中没有，spawn会自动失败并给出明确错误
+    actualKubeletPath = possiblePaths[0] // 'kubelet-wuhrai'
+    console.log('✅ 使用kubelet-wuhrai路径:', actualKubeletPath)
+
+    // 执行kubelet-wuhrai命令 - 不使用shell避免参数解析问题
+    console.log('🚀 最终执行命令:', {
+      path: actualKubeletPath,
+      args: args,
+      env: Object.keys(fullEnv).filter(k => k.startsWith('OPENAI_') || k.startsWith('DEEPSEEK_'))
+    })
+
+    const child = spawn(actualKubeletPath, args, {
       stdio: ['ignore', 'pipe', 'pipe'], // ignore stdin, pipe stdout/stderr
       env: fullEnv,
       cwd: process.cwd(),
-      shell: true, // 使用shell执行以确保PATH解析
+      shell: false, // 不使用shell避免参数解析问题
       detached: false,
       windowsHide: true // 隐藏窗口（如果在Windows上）
     })

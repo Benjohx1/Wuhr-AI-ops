@@ -310,22 +310,56 @@ install_nodejs() {
 configure_npm_mirrors() {
     log_step "配置npm国内镜像源"
 
+    # 基础npm配置
     npm config set registry $NPM_REGISTRY
     npm config set cache ~/.npm-cache
 
-    # 配置node-gyp使用国内镜像
-    npm config set disturl https://npmmirror.com/mirrors/node
-    npm config set sass_binary_site https://npmmirror.com/mirrors/node-sass
-    npm config set electron_mirror https://npmmirror.com/mirrors/electron/
-    npm config set puppeteer_download_host https://npmmirror.com/mirrors
-    npm config set chromedriver_cdnurl https://npmmirror.com/mirrors/chromedriver
-    npm config set operadriver_cdnurl https://npmmirror.com/mirrors/operadriver
-    npm config set phantomjs_cdnurl https://npmmirror.com/mirrors/phantomjs
-    npm config set selenium_cdnurl https://npmmirror.com/mirrors/selenium
-    npm config set node_inspector_cdnurl https://npmmirror.com/mirrors/node-inspector
+    # 检查npm版本，针对不同版本使用不同配置
+    local npm_version=$(npm --version)
+    local npm_major_version=$(echo $npm_version | cut -d. -f1)
 
-    # 配置Python相关镜像源（用于node-gyp编译）
-    npm config set python_mirror https://npmmirror.com/mirrors/python
+    log_info "检测到npm版本: $npm_version"
+
+    # 对于npm 11+版本，使用环境变量而不是config设置
+    if [ "$npm_major_version" -ge 11 ]; then
+        log_info "使用npm 11+兼容配置"
+
+        # 设置环境变量（这些在新版本npm中仍然有效）
+        export SASS_BINARY_SITE=https://npmmirror.com/mirrors/node-sass
+        export ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+        export PUPPETEER_DOWNLOAD_HOST=https://npmmirror.com/mirrors
+        export CHROMEDRIVER_CDNURL=https://npmmirror.com/mirrors/chromedriver
+        export PYTHON_MIRROR=https://npmmirror.com/mirrors/python
+
+        # 创建.npmrc文件设置镜像源
+        cat > ~/.npmrc << EOF
+registry=$NPM_REGISTRY
+cache=~/.npm-cache
+sass_binary_site=https://npmmirror.com/mirrors/node-sass
+electron_mirror=https://npmmirror.com/mirrors/electron/
+puppeteer_download_host=https://npmmirror.com/mirrors
+chromedriver_cdnurl=https://npmmirror.com/mirrors/chromedriver
+operadriver_cdnurl=https://npmmirror.com/mirrors/operadriver
+phantomjs_cdnurl=https://npmmirror.com/mirrors/phantomjs
+selenium_cdnurl=https://npmmirror.com/mirrors/selenium
+node_inspector_cdnurl=https://npmmirror.com/mirrors/node-inspector
+python_mirror=https://npmmirror.com/mirrors/python
+EOF
+
+    else
+        log_info "使用传统npm配置"
+
+        # 传统npm配置方式（npm 10及以下）
+        npm config set sass_binary_site https://npmmirror.com/mirrors/node-sass
+        npm config set electron_mirror https://npmmirror.com/mirrors/electron/
+        npm config set puppeteer_download_host https://npmmirror.com/mirrors
+        npm config set chromedriver_cdnurl https://npmmirror.com/mirrors/chromedriver
+        npm config set operadriver_cdnurl https://npmmirror.com/mirrors/operadriver
+        npm config set phantomjs_cdnurl https://npmmirror.com/mirrors/phantomjs
+        npm config set selenium_cdnurl https://npmmirror.com/mirrors/selenium
+        npm config set node_inspector_cdnurl https://npmmirror.com/mirrors/node-inspector
+        npm config set python_mirror https://npmmirror.com/mirrors/python
+    fi
 
     log_success "npm国内镜像源配置完成"
     log_info "当前npm源: $(npm config get registry)"

@@ -72,7 +72,7 @@
   - 批量主机操作
   - 连接认证管理
   - 主机分组管理
-<img width="1512" height="949" alt="截屏2025-07-31 00 36 09" src="https://github.com/user-attachments/assets/41838a1d-4b04-4c8d-aa85-288c60484652" />
+<img width="1512" height="949" alt="截屏2025-07-31 00 36 09" src="https://github.com/user-attachments/assets/809e1c85-1a00-4202-95c7-1027a24df58a" />
 
 #### 👥 用户管理
 - **功能描述**: 完整的用户权限管理系统

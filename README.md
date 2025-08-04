@@ -334,11 +334,16 @@ tail -f app.log
 - **AI接口**: [ai.wuhrai.com](https://ai.wuhrai.com)
 - **Chat服务**: [gpt.wuhrai.com](https://gpt.wuhrai.com)
 
+##微信交流
+
+![IMG_6497](https://github.com/user-attachments/assets/62b8f3c6-2e7b-4289-92ae-a971f10d8800)
+
 ### 技术支持
 
 - **GitHub Issues**: [提交问题](https://github.com/st-lzh/Wuhr-AI-ops/issues)
 - **讨论区**: [GitHub Discussions](https://github.com/st-lzh/Wuhr-AI-ops/discussions)
 - **文档**: [项目README](./README.md)
+
 
 ---
 

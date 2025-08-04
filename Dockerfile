@@ -43,24 +43,24 @@ RUN apt-get update && apt-get install -y \
 # 设置时区
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# 安装Node.js - 使用清华大学镜像
-RUN curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/nodesource/deb_20.x/setup_20.x | bash - \
+# 方案1：使用官方NodeSource仓库安装Node.js
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs
 
+# 方案2（备选）：直接从二进制包安装Node.js
+# RUN curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz -o node.tar.xz && \
+#     tar -xJf node.tar.xz -C /usr/local --strip-components=1 && \
+#     rm node.tar.xz
+
+# 方案3（备选）：使用Ubuntu官方包管理器（版本可能较老）
+# RUN apt-get update && apt-get install -y nodejs npm && rm -rf /var/lib/apt/lists/*
+
 # 配置npm使用淘宝镜像
-RUN npm config set registry https://registry.npmmirror.com/ && \
-    npm config set disturl https://npmmirror.com/dist && \
-    npm config set electron_mirror https://npmmirror.com/mirrors/electron/ && \
-    npm config set sass_binary_site https://npmmirror.com/mirrors/node-sass && \
-    npm config set phantomjs_cdnurl https://npmmirror.com/mirrors/phantomjs
+RUN npm config set registry https://registry.npmmirror.com/
 
 # 安装pnpm并配置镜像源
 RUN npm install -g pnpm@${PNPM_VERSION} && \
-    pnpm config set registry https://registry.npmmirror.com/ && \
-    pnpm config set disturl https://npmmirror.com/dist && \
-    pnpm config set electron_mirror https://npmmirror.com/mirrors/electron/ && \
-    pnpm config set sass_binary_site https://npmmirror.com/mirrors/node-sass && \
-    pnpm config set phantomjs_cdnurl https://npmmirror.com/mirrors/phantomjs
+    pnpm config set registry https://registry.npmmirror.com/
 
 # 复制package.json和pnpm-lock.yaml（如果存在）
 COPY package*.json ./

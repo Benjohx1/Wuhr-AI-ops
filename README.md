@@ -269,11 +269,10 @@ docker-compose up -d
 
 ### 访问地址
 
-- **主应用**: http://localhost:3000
+- **主应用**: https://aiops.wuhrai.com
 
 ### 默认账户
 
-- **用户名**: admin
 - **邮箱**: admin@wuhr.ai
 - **密码**: Admin123!
 

@@ -267,7 +267,7 @@ docker-compose down -v
 docker-compose up -d
 ```
 
-### 访问地址
+### 演示地址
 
 - **主应用**: https://aiops.wuhrai.com
 

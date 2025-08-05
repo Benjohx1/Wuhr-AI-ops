@@ -61,8 +61,7 @@
   - 远程主机命令执行，kubelet-wuhrai命令检测，没有安装会自动安装
   - 会话历史管理
   - 实时命令执行反馈
-  <img width="1512" height="949" alt="截屏2025-07-31 00 35 10" src="https://github.com/user-attachments/assets/3232f58d-c4e2-4c7e-be4e-91b25fa12519" />
-
+  <img width="1512" height="949" alt="截屏2025-07-31 00 35 10" src="https://github.com/user-attachments/assets/4c4019dd-9b19-4b30-a70c-604458e90df5" />
 
 #### 🖥️ 主机管理
 - **功能描述**: 统一管理本地和远程服务器资源

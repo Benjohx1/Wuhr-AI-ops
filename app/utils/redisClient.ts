@@ -21,8 +21,7 @@ class RedisManager {
 
     try {
       this.client = createClient({
-        url: 'redis://localhost:6379',
-        password: 'redis_password_2024',
+        url: process.env.REDIS_URL || 'redis://:redis_password_2024@localhost:6379',
         socket: {
           reconnectStrategy: (retries) => Math.min(retries * 50, 500)
         }

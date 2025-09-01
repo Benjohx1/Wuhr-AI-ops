@@ -334,7 +334,7 @@ tail -f app.log
 
 ##微信交流
 
-![IMG_6601](https://github.com/user-attachments/assets/02c2c3f1-858b-4d7f-b3a4-2c7d08cf1b92)
+![IMG_6693](https://github.com/user-attachments/assets/dc8123a6-e883-433a-9c72-ba52a5173a61)
 
 
 ### 技术支持

